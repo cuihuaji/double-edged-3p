@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<title>Double Edged · 三人锁步（原版无锁）</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #07090c; overflow: hidden; }
+  #stage { position: absolute; left: 0; top: 0; width: 880px; height: 640px; }
+  #stage ruffle-player, #stage object, #stage embed { width: 100%; height: 100%; display:block; }
+</style>
+<script>
+/* ============ 确定性运行时（与 play3p.html 相同，联机锁步必需） ============ */
+(function () {
+  "use strict";
+  var Q = new URLSearchParams(location.search);
+  var SEED = parseInt(Q.get("seed") || "20261027", 10) >>> 0;
+  var STEP = 1000 / 30;
+
+  var L = {
+    seed: SEED, frames: 0, started: false, phase: "loading",
+    randCalls: 0, vnow: 0, qLen: 0
+  };
+  function rndAt(i) {
+    var x = (SEED ^ Math.imul((i >>> 0) + 0x9E3779B9, 0x85EBCA6B)) >>> 0;
+    x ^= x >>> 16; x = Math.imul(x, 0x7feb352d) >>> 0;
+    x ^= x >>> 15; x = Math.imul(x, 0x846ca68b) >>> 0;
+    x ^= x >>> 16;
+    return (x >>> 0) / 4294967296;
+  }
+  Math.random = function () { return rndAt(L.randCalls++); };
+  L.resetRng = function () { L.randCalls = 0; };
+  L.rndAt = rndAt;
+
+  var q = [], seq = 0;
+  window.requestAnimationFrame = function (cb) { q.push([++seq, cb]); return seq; };
+  window.cancelAnimationFrame = function (id) {
+    for (var i = 0; i < q.length; i++) if (q[i][0] === id) q[i][1] = null;
+  };
+  window.__stepOnce = function () {
+    var item = q.shift();
+    if (!item) return false;
+    L.vnow += STEP;
+    performance.now = function () { return L.vnow; };
+    if (item[1]) item[1](L.vnow);
+    L.frames++;
+    L.qLen = q.length;
+    return true;
+  };
+  window.__queueLen = function () { return q.length; };
+
+  performance.now = function () { return L.vnow; };
+  var RealDate = Date, BASE = 1700000000000;
+  function VDate() {
+    if (arguments.length === 0) return new RealDate(BASE + L.vnow);
+    if (arguments.length === 1) return new RealDate(arguments[0]);
+    return new RealDate(arguments[0], arguments[1], arguments[2] || 1,
+                       arguments[3] || 0, arguments[4] || 0, arguments[5] || 0, arguments[6] || 0);
+  }
+  VDate.now = function () { return BASE + L.vnow; };
+  VDate.parse = RealDate.parse;
+  VDate.UTC = RealDate.UTC;
+  VDate.prototype = RealDate.prototype;
+  window.Date = VDate;
+
+  var SLOT = (new URLSearchParams(location.search).get("slot") || "1");
+  setInterval(function () {
+    try { fetch("/diag/r?slot=" + SLOT + "&n=" + L.randCalls + "&f=" + (L.frames || 0)); } catch (e) {}
+  }, 5000);
+
+  window.__lock = {
+    get started() { return L.started; },
+    setStarted: function () { if (!L.started) { L.started = true; L.phase = "ready"; } },
+    seed: SEED, stepOnce: window.__stepOnce, queueLen: window.__queueLen,
+    frames: function(){ return L.frames; },
+    qLen: L.qLen,
+    /* Ruffle 解码完成、真正渲染出首帧画面后才置位（lock.js 以此为起跑门槛） */
+    canvasReady: false,
+    canvas: function () {
+      // Ruffle 的 canvas 在 shadow DOM 里，优先穿透查找
+      var p = document.querySelector("ruffle-player");
+      if (p && p.shadowRoot) {
+        var c = p.shadowRoot.querySelector("canvas");
+        if (c && c.width >= 400) return c;
+      }
+      var cs = document.querySelectorAll("canvas");
+      for (var i = 0; i < cs.length; i++) if (cs[i].width >= 400) return cs[i];
+      return null;
+    }
+  };
+  (function watchCanvas(){
+    var c = window.__lock.canvas();
+    if (c && c.width >= 400 && window.__queueLen() > 0) { window.__lock.canvasReady = true; return; }
+    setTimeout(watchCanvas, 200);
+  })();
+
+  /* ---- 事件注入（与 play3p.html 同语义：联机锁步的输入通道） ---- */
+  var KEYCODE = {
+    ArrowLeft:37, ArrowUp:38, ArrowRight:39, ArrowDown:40,
+    KeyA:65, KeyS:83, KeyD:68, KeyW:87,
+    Space:32, Enter:13, Escape:27, ShiftLeft:16,
+    KeyI:73, KeyK:75, KeyJ:74, KeyL:76, KeyO:79, KeyP:80
+  };
+  var KEYNAME = {
+    ArrowLeft:"ArrowLeft", ArrowUp:"ArrowUp", ArrowRight:"ArrowRight", ArrowDown:"ArrowDown",
+    KeyA:"a", KeyS:"s", KeyD:"d", KeyW:"w",
+    Space:" ", Enter:"Enter", Escape:"Escape", ShiftLeft:"Shift",
+    KeyI:"i", KeyK:"k", KeyJ:"j", KeyL:"l", KeyO:"o", KeyP:"p"
+  };
+  function fireKey(type, code) {
+    var kc = KEYCODE[code];
+    if (!kc) return;
+    var ev = new KeyboardEvent(type, {
+      key: KEYNAME[code], code: code, keyCode: kc, which: kc,
+      bubbles: true, cancelable: true, composed: true
+    });
+    ev.__np = true;
+    [document, document.body, window].forEach(function (t) {
+      try { t && t.dispatchEvent(ev); } catch (e) {}
+    });
+  }
+  function fireMouse(type, fx, fy) {
+    var c = window.__lock.canvas();
+    if (!c) return;
+    var r = c.getBoundingClientRect();
+    var o = {
+      clientX: Math.round(r.left + r.width * fx),
+      clientY: Math.round(r.top + r.height * fy),
+      bubbles: true, cancelable: true, composed: true, view: window,
+      button: 0, buttons: (type === "pointerdown" || type === "mousedown") ? 1 : 0
+    };
+    var ev;
+    if (type.indexOf("pointer") === 0) {
+      o.pointerId = 1; o.pointerType = "mouse"; o.isPrimary = true;
+      ev = new PointerEvent(type, o);
+    } else {
+      ev = new MouseEvent(type, o);
+    }
+    ev.__np = true;
+    c.dispatchEvent(ev);
+  }
+  L.applyEvents = function (list) {
+    L.evCount = (L.evCount || 0) + list.length;
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      if (e[0] === "d") fireKey("keydown", e[1]);
+      else if (e[0] === "u") fireKey("keyup", e[1]);
+      else if (e[0] === "md") {
+        fireMouse("pointermove", e[1], e[2]);
+        fireMouse("mousemove", e[1], e[2]);
+        fireMouse("pointerdown", e[1], e[2]);
+        fireMouse("mousedown", e[1], e[2]);
+      }
+      else if (e[0] === "mu") fireMouse("pointerup", e[1], e[2]), fireMouse("mouseup", e[1], e[2]), fireMouse("click", e[1], e[2]);
+    }
+  };
+  window.__lock.applyEvents = L.applyEvents;
+
+  /* ---- 画面哈希（与 play3p.html 同算法：64x48 采样，FNV 变体） ---- */
+  var hashCv = document.createElement("canvas");
+  hashCv.width = 64; hashCv.height = 48;
+  var hashCtx = hashCv.getContext("2d", { willReadFrequently: true });
+  L.hash = function () {
+    var c = window.__lock.canvas();
+    if (!c) return 0;
+    try {
+      hashCtx.drawImage(c, 0, 0, 64, 48);
+      var d = hashCtx.getImageData(0, 0, 64, 48).data;
+      var h = 2166136261;
+      for (var i = 0; i < d.length; i += 4) {
+        h ^= d[i] + (d[i + 1] << 3) + (d[i + 2] << 6);
+        h = Math.imul(h, 16777619);
+      }
+      return h >>> 0;
+    } catch (e) { return 0; }
+  };
+  window.__lock.hash = L.hash;
+  window.__lockset = L;
+
+  /* —— 帧驱动：默认自转（单机/联机皆可），联机方可用 __pauseAuto() 接管 ——
+   * Ruffle 的渲染循环依赖 requestAnimationFrame；确定性 RAF 队列没人消费就永远黑屏。
+   * 这里用真实 setInterval 按虚拟 30fps 节奏消费队列：单机直接可玩；
+   * 联机时 lock.js 调 __pauseAuto() 后用自己的同步循环驱动 stepOnce。 */
+  window.__autoDrain = true;
+  window.__pauseAuto = function () { window.__autoDrain = false; };
+  window.__resumeAuto = function () { window.__autoDrain = true; };
+  setInterval(function () {
+    if (!window.__autoDrain) return;
+    // 每个真实 tick 消费至多 3 帧，防止队列堆积
+    for (var i = 0; i < 3; i++) { if (!window.__stepOnce()) break; }
+  }, STEP);
+})();
+</script>
+
+<!-- 界面锁消解：原版 SWF（archive.org 去URL锁版）本身无锁，无需任何重定向；
+     这里只保留 sitelock 导航兜底（无害）。 -->
+<script>
+(function () {
+  "use strict";
+  var BLOCK = /poki\.com\/sitelock|game-not-available|game-cdn\.poki/i;
+  var realOpen = window.open ? window.open.bind(window) : null;
+  window.open = function (url) {
+    if (url && typeof url === "string" && BLOCK.test(url)) return null;
+    return realOpen ? realOpen.apply(null, arguments) : null;
+  };
+})();
+</script>
+
+<script src="js/ruffle-std/ruffle.js"></script>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+(function () {
+  "use strict";
+  window.RufflePlayer.config = window.RufflePlayer.config || {};
+  var ruffle = window.RufflePlayer.newest();
+  var player = ruffle.createPlayer();
+  document.getElementById("stage").appendChild(player);
+  player.load({
+    url: "assets/game_unlocked.swf",
+    allowScriptAccess: false,
+    autoplay: "on",
+    unmuteOverlay: "hidden",
+    splashScreen: null,
+    letterbox: "off",
+    renderer: "canvas",
+    preferredRenderer: "canvas",
+    forceScale: true,
+    scale: "showAll"
+  }).then(function () {
+    /* 就绪判据：Ruffle load() resolve 即置位。不能等 canvas——联机模式下 lock.js
+       会在 __lock 出现时立刻 __pauseAuto()，自驱动停转后 Ruffle 的 RAF 不跑、
+       canvas 永远不会出现，等 canvas 就死锁。load resolve 后 RAF 队列里已有回调，
+       锁步一推就有画面；单机自驱动也立即接管。 */
+    window.__lock.setStarted();
+  }).catch(function (e) { console.error("ruffle load fail", e); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>绝地双刃 · 三人联机</title>
+<script>
+/* 界面锁消解：若以非 localhost 打开，整体重定向到 http://localhost:<同端口>，
+   否则游戏会因 Poki sitelock 跳 poki.com/sitelock。任意来源（127.0.0.1 / 局域网 IP）
+   都能开，会自动纠正到 localhost；联机必须走本机 serve.ps1（默认就是 localhost:8740）。 */
+(function(){try{if(location.hostname!=="localhost"){location.replace("http://localhost:"+(location.port||"80")+location.pathname+location.search);}}catch(e){}})();
+</script>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 30%, #1c2733 0%, #0b0f14 70%);
+    color: #e8eef6; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+  }
+  .wrap { width: 620px; max-width: 92vw; padding: 34px 30px 26px; }
+  h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: 2px; }
+  .sub { color: #8fa3b8; font-size: 13px; line-height: 1.7; margin-bottom: 22px; }
+  .cards { display: flex; gap: 14px; }
+  .card {
+    flex: 1; display: block; padding: 20px 16px; border-radius: 12px; text-decoration: none;
+    background: #16202b; border: 1px solid #263545; color: #e8eef6;
+    transition: .15s; text-align: center;
+  }
+  .card:hover { background: #1d2a38; border-color: #3f5b78; transform: translateY(-2px); }
+  .card b { display: block; font-size: 17px; margin-bottom: 6px; }
+  .card span { font-size: 12px; color: #8fa3b8; line-height: 1.6; }
+  .host b { color: #ffd166; }
+  .join b { color: #6fd3ff; }
+  table { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 13px; }
+  th, td { padding: 8px 6px; text-align: center; border-top: 1px solid #1e2b38; }
+  th { color: #8fa3b8; font-weight: 400; font-size: 12px; }
+  td:first-child, th:first-child { text-align: left; }
+  kbd {
+    background: #223040; border: 1px solid #33475c; border-radius: 4px;
+    padding: 1px 6px; font-family: Consolas, monospace; font-size: 12px;
+  }
+  .note { margin-top: 18px; font-size: 12px; color: #7b8fa3; line-height: 1.8; }
+  .note b { color: #ffb4a2; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>绝地双刃 · 三人联机</h1>
+  <div class="sub">每个人都在自己的电脑上跑游戏，网络上只传按键。三个人都先双击 <b>启动.bat</b>，再打开这个页面。</div>
+
+  <div class="cards">
+    <a class="card host" href="net3/host3.html">
+      <b>我是房主</b>
+      <span>点进来后<br>把生成的房号发给另外两人</span>
+    </a>
+    <a class="card join" href="net3/join3.html">
+      <b>我是好友</b>
+      <span>点进来后<br>输入房主给你的房号</span>
+    </a>
+  </div>
+
+  <table>
+    <tr><th>角色</th><th>移动</th><th>攻击</th><th>跳跃</th></tr>
+    <tr><td>P1 房主</td><td><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></td><td><kbd>N</kbd></td><td><kbd>M</kbd></td></tr>
+    <tr><td>P2 好友一</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td><kbd>G</kbd></td><td><kbd>H</kbd></td></tr>
+    <tr><td>P3 好友二</td><td><kbd>I</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd></td><td><kbd>O</kbd></td><td><kbd>P</kbd></td></tr>
+  </table>
+
+  <div class="note">
+    菜单（PLAY / 选人数 / 选地图）<b>只有房主能操作</b>，好友等房主开局。<br>
+    从本机 <b>http://localhost:8740/</b> 打开即可；界面锁已拆除，局域网 IP / 公网也能直接开（直接双击 html 文件因 file:// 协议仍无法加载资源，需经本服务）。
+  </div>
+</div>
+</body>
+</html>

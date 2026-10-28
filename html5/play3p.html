@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<title>Double Edged · 三人锁步</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  /* 页面本身固定成 550x400 的 1.6 倍：AVM 按容器尺寸决定画布像素和舞台比例，
+     两端只有容器一样大，算出的包围盒才会一样（命中判定依赖包围盒）。 */
+  /* 画布必须待在 (0,0)：AVM 计算鼠标坐标时按原点算，居中会让点击整体偏移 */
+  /* AVM 算鼠标坐标时按画布左上角 = 页面原点。画布一旦有偏移，点击就整体偏。
+     所以 body 零边距、画布绝对定位到 (0,0)。 */
+  html, body { margin: 0; padding: 0; width: 100%; height: 100%; background: #07090c; overflow: hidden; }
+
+  #splash__image {
+    position: absolute; left: 0; top: 0;
+    background-repeat: no-repeat; background-size: cover;
+    background-image: url("assets/todo.jpg");
+    visibility: visible; z-index: 10;
+  }
+  #progress__root { position: absolute; }
+  #progress__line { width: 0; height: 100%; transition: all .5s; }
+  #loading__image {
+    position: absolute; background-size: contain;
+    background-position: center; background-repeat: no-repeat;
+  }
+  canvas {
+    outline: none;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+  }
+</style>
+</head>
+<body>
+<div id="splash__image">
+  <div id="progress__root"><div id="progress__line"></div></div>
+  <div id="loading__image"></div>
+</div>
+
+<script>
+/* ============ 确定性运行时（必须在游戏脚本之前） ============
+ * 1) Math.random 换成可播种 PRNG
+ * 2) requestAnimationFrame 换成手动队列 —— 一步 = 一帧游戏
+ * 3) performance.now / Date 换成虚拟时钟（固定步长 1000/30）
+ * 这样游戏只会因为「被调用 step()」而前进，永远不会自己跑。
+ */
+(function () {
+  "use strict";
+  var Q = new URLSearchParams(location.search);
+  var SEED = parseInt(Q.get("seed") || "20261027", 10) >>> 0;
+  var STEP = 1000 / 30;
+
+  var L = {
+    seed: SEED,
+    frames: 0,        // 已推进的帧数（进入锁步后从 0 计）
+    started: false,   // 游戏真正开始（资源载完、进入主循环）
+    phase: "loading", // loading -> ready -> running
+    randCalls: 0,
+    vnow: 0
+  };
+
+  /* ---- 按序号取值的 PRNG ----
+     关键：第 i 次调用必然得到同一个数，与"之前调用过几次"无关。
+     这样只要两端在每帧开始时的序号相同，整帧内所有随机数就完全相同；
+     即使某一端在进关卡前多消耗了几次，也不会永久错位。 */
+  var rs = SEED;
+  function rndAt(i) {
+    var x = (SEED ^ Math.imul((i >>> 0) + 0x9E3779B9, 0x85EBCA6B)) >>> 0;
+    x ^= x >>> 16; x = Math.imul(x, 0x7feb352d) >>> 0;
+    x ^= x >>> 15; x = Math.imul(x, 0x846ca68b) >>> 0;
+    x ^= x >>> 16;
+    return (x >>> 0) / 4294967296;
+  }
+  Math.random = function () { return rndAt(L.randCalls++); };
+  L.resetRng = function () { rs = SEED; L.randCalls = 0; };
+  L.rndAt = rndAt;
+
+  /* ---- 手动 RAF 队列 ---- */
+  var q = [], seq = 0;
+  window.requestAnimationFrame = function (cb) { q.push([++seq, cb]); return seq; };
+  window.cancelAnimationFrame = function (id) {
+    for (var i = 0; i < q.length; i++) if (q[i][0] === id) q[i][1] = null;
+  };
+
+  /* ---- 虚拟时钟 ---- */
+  performance.now = function () { return L.vnow; };
+  var RealDate = Date, BASE = 1700000000000;
+  function VDate() {
+    if (arguments.length === 0) return new RealDate(BASE + L.vnow);
+    if (arguments.length === 1) return new RealDate(arguments[0]);
+    return new RealDate(arguments[0], arguments[1], arguments[2] || 1,
+                       arguments[3] || 0, arguments[4] || 0, arguments[5] || 0, arguments[6] || 0);
+  }
+  VDate.now = function () { return BASE + L.vnow; };
+  VDate.parse = RealDate.parse;
+  VDate.UTC = RealDate.UTC;
+  VDate.prototype = RealDate.prototype;
+  window.Date = VDate;
+
+  /* ---- 诊断：上报随机数调用次数（判断两端 RNG 流是否错位）---- */
+  var SLOT = (new URLSearchParams(location.search).get("slot") || "1");
+  setInterval(function () {
+    try {
+      fetch("/diag/r?slot=" + SLOT + "&n=" + L.randCalls + "&f=" + (L.frames || 0));
+    } catch (e) {}
+  }, 500);
+
+  /* ---- 单步推进：排空一次队列 = 一帧游戏 ---- */
+  function stepOnce() {
+    L.vnow += STEP;
+    var cur = q; q = [];
+    var ran = 0;
+    for (var i = 0; i < cur.length; i++) {
+      if (!cur[i][1]) continue;
+      ran++;
+      try { cur[i][1](L.vnow); } catch (e) {}
+    }
+    L.qLen = ran;               // 这一步排空了几个内部回调（正常应为 1）
+    if (L.started) L.frames++;
+    return ran;
+  }
+
+  /* ---- 载入阶段自由跑（资源加载靠 Promise，不靠帧，但要给预加载动画帧） ---- */
+  var freeT = setInterval(function () {
+    if (L.phase !== "loading") { clearInterval(freeT); return; }
+    stepOnce();
+  }, STEP);
+
+  /* ---- 输入注入 ---- */
+  var KEYCODE = {
+    ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40,
+    KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68,
+    KeyN: 78, KeyM: 77, KeyG: 71, KeyH: 72,
+    KeyI: 73, KeyK: 75, KeyJ: 74, KeyL: 76, KeyO: 79, KeyP: 80
+  };
+  var KEYNAME = {
+    ArrowLeft: "ArrowLeft", ArrowUp: "ArrowUp", ArrowRight: "ArrowRight", ArrowDown: "ArrowDown",
+    KeyW: "w", KeyA: "a", KeyS: "s", KeyD: "d",
+    KeyN: "n", KeyM: "m", KeyG: "g", KeyH: "h",
+    KeyI: "i", KeyK: "k", KeyJ: "j", KeyL: "l", KeyO: "o", KeyP: "p"
+  };
+
+  function fireKey(type, code) {
+    var kc = KEYCODE[code];
+    if (!kc) return;
+    var ev = new KeyboardEvent(type, {
+      key: KEYNAME[code], code: code, keyCode: kc, which: kc,
+      bubbles: true, cancelable: true, composed: true
+    });
+    ev.__np = true;   // 我们自己的合成事件，放行
+    [document, document.body, window].forEach(function (t) {
+      try { t && t.dispatchEvent(ev); } catch (e) {}
+    });
+  }
+
+  function canvas() {
+    var cs = document.querySelectorAll("canvas");
+    for (var i = 0; i < cs.length; i++) if (cs[i].width >= 400) return cs[i];
+    return null;
+  }
+
+  function fireMouse(type, fx, fy) {
+    var c = canvas();
+    if (!c) return;
+    var r = c.getBoundingClientRect();
+    var o = {
+      clientX: Math.round(r.left + r.width * fx),
+      clientY: Math.round(r.top + r.height * fy),
+      bubbles: true, cancelable: true, composed: true, view: window,
+      button: 0, buttons: (type === "pointerdown" || type === "mousedown") ? 1 : 0
+    };
+    var ev;
+    if (type.indexOf("pointer") === 0) {
+      o.pointerId = 1; o.pointerType = "mouse"; o.isPrimary = true;
+      ev = new PointerEvent(type, o);
+    } else {
+      ev = new MouseEvent(type, o);
+    }
+    ev.__np = true;
+    c.dispatchEvent(ev);
+  }
+
+  /* ---- 屏蔽原生输入：游戏只接受按帧注入的合成事件 ---- */
+  function blockNative(type, flag) {
+    window.addEventListener(type, function (e) {
+      if (e.__np) return;
+      e.stopImmediatePropagation();
+      e.preventDefault();
+    }, true);
+    flag && 0;
+  }
+  var QS = new URLSearchParams(location.search);
+  var AUTO = QS.has("auto");
+  var NOBLOCK = QS.has("noblock") || AUTO;
+  if (!NOBLOCK) {
+    // 只拦键盘。鼠标不能拦：AVM 的命中判定依赖原生指针状态，
+    // 拦截后哪怕合成事件能到 window，菜单也点不动。
+    // 外层页面已用 pointer-events:none 挡住原生鼠标，游戏本来就收不到。
+    ["keydown", "keyup", "keypress"].forEach(function (t) { blockNative(t); });
+  }
+
+  /* ---- 对外 API ---- */
+  var hashCv = document.createElement("canvas");
+  hashCv.width = 64; hashCv.height = 48;
+  var hashCtx = hashCv.getContext("2d", { willReadFrequently: true });
+
+  L.stepOnce = stepOnce;
+  L.canvas = canvas;
+  /* 画布像素尺寸固定为 880x640（16:11.6 ≈ 550:400），两端完全一致 */
+  var CW = 880, CH = 640;
+  function fitCanvas() {
+    var c = canvas();
+    if (!c) return false;
+    L.scale = 1;
+    return true;
+  }
+  L.fitCanvas = fitCanvas;
+  L.setStarted = function () {
+    if (L.started) return;
+    L.started = true;
+    L.frames = 0;
+    L.phase = "ready";
+    clearInterval(freeT);
+    fitCanvas();
+    setTimeout(fitCanvas, 300);
+    setTimeout(fitCanvas, 1200);
+    if (AUTO) {
+      // 自己玩的模式：就绪后自动跑 30fps，不依赖外部单步
+      setInterval(function () { if (L.started) stepOnce(); }, 1000 / 30);
+    }
+  };
+  window.addEventListener("resize", function () { setTimeout(fitCanvas, 80); });
+  /* 一次事件批量应用（同一帧内） */
+  L.applyEvents = function (list) {
+    L.evCount = (L.evCount || 0) + list.length;
+    for (var q = 0; q < list.length; q++) if (list[q][0] === "md") L.clickApplied = (L.clickApplied || 0) + 1;
+    for (var i = 0; i < list.length; i++) {
+      var e = list[i];
+      if (e[0] === "d") fireKey("keydown", e[1]);
+      else if (e[0] === "u") fireKey("keyup", e[1]);
+      else if (e[0] === "md") {
+        // 必须先移动一次：AVM 用"最后一次 mousemove"的坐标做命中判定，
+        // 只发 down/up 会落在它记录的旧位置上，菜单永远点不动。
+        fireMouse("pointermove", e[1], e[2]);
+        fireMouse("mousemove", e[1], e[2]);
+        fireMouse("pointerdown", e[1], e[2]);
+        fireMouse("mousedown", e[1], e[2]);
+      }
+      else if (e[0] === "mu") fireMouse("pointerup", e[1], e[2]), fireMouse("mouseup", e[1], e[2]), fireMouse("click", e[1], e[2]);
+    }
+  };
+  /* 画面哈希：step 之后取，位置固定，不存在采样相位问题 */
+  L.hash = function () {
+    var c = canvas();
+    if (!c) return 0;
+    try {
+      hashCtx.drawImage(c, 0, 0, 64, 48);
+      var d = hashCtx.getImageData(0, 0, 64, 48).data;
+      var h = 2166136261;
+      for (var i = 0; i < d.length; i += 4) {
+        h ^= d[i] + (d[i + 1] << 3) + (d[i + 2] << 6);
+        h = Math.imul(h, 16777619);
+      }
+      return h >>> 0;
+    } catch (e) { return 0; }
+  };
+
+  window.__lock = L;
+})();
+</script>
+
+<!-- 界面锁消解（页面级去锁）：
+     锁的判定只读 window.location.hostname（实测：localhost 放行，127.0.0.1 / 局域网 IP 跳 poki.com/sitelock）。
+     由于 Chromium 不允许重写 Location.prototype.hostname 的 getter，最干净的做法是：
+     在一切脚本之前，若本页以非 localhost 打开，则整体重定向到 http://localhost:<同端口> 再打开，
+     这样 hostname 自然变成 localhost、锁放行；且所有资源仍同机同端口，不影响 net3 同域嵌入。
+     仅对顶层窗口执行（iframe 内由父页负责重定向，避免跨域）。 -->
+<script>
+(function () {
+  "use strict";
+  try {
+    if (window === window.top && location.hostname !== "localhost") {
+      var u = "http://localhost:" + (location.port || "80") + location.pathname + location.search;
+      location.replace(u);
+      // 阻断后续脚本执行，避免重复加载
+      throw new Error("redirect-to-localhost");
+    }
+  } catch (e) {}
+})();
+</script>
+
+<!-- 导航兜底（无害）：万一锁走 window.open / location.href 分支，也静默丢弃 sitelock / not-available -->
+<script>
+(function () {
+  "use strict";
+  var BLOCK = /poki\.com\/sitelock|game-not-available|game-cdn\.poki/i;
+  var realOpen = window.open ? window.open.bind(window) : null;
+  window.open = function (url) {
+    if (url && typeof url === "string" && BLOCK.test(url)) return null;
+    return realOpen ? realOpen.apply(null, arguments) : null;
+  };
+  try {
+    var dHref = Object.getOwnPropertyDescriptor(Location.prototype, "href");
+    if (dHref && dHref.configurable) {
+      Object.defineProperty(Location.prototype, "href", {
+        configurable: true,
+        get: function () { return dHref.get.call(this); },
+        set: function (v) { if (v && typeof v === "string" && BLOCK.test(v)) return; dHref.set.call(this, v); }
+      });
+    }
+  } catch (e) {}
+})();
+</script>
+
+<script src="poki-sdk.js"></script>
+<script src="js/loader.js"></script>
+
+<script>
+(function () {
+  "use strict";
+  const STUB = {
+    adBlocked: false,
+    init: () => Promise.resolve(),
+    setDebug() {}, gameLoadingStart() {}, gameLoadingProgress() {}, gameLoadingFinished() {},
+    gameplayStart() {}, gameplayStop() {}, happyTime() {},
+    commercialBreak: () => Promise.resolve(),
+    rewardedBreak: () => Promise.resolve(false),
+    displayAd: () => Promise.resolve()
+  };
+
+  const config = {
+    key: "doubleedged",
+    title: "Double Edged",
+    filename: "game_3p",
+    stageScaleMode: "showAll",
+    width: 550,
+    height: 400,
+    pokiSDK: false,
+    debugPoki: false,
+    showFPS: false,
+    debug: false,
+    splash: "assets/todo.jpg",
+    start: null,
+    x: 0, y: 0, w: "100%", h: "100%",
+    stageAlign: null,
+    progressParserWeigth: 1,
+    progress: {
+      direction: "lr",
+      back: "#35809e",
+      line: "#070bff",
+      rect: [0.25, 0.65, 0.5, 0.01]
+    },
+    skipFramesOfScene: null,
+    buttonPokiSDKActions: null,
+    retryButtonIDS: null,
+    retryButtonAction: null,
+    actionOnStop: null,
+    actionWhenRetryButtonEncountered: null,
+    debugpoki: false,
+    filenameNoSdk: "double-edged",
+    binary: [
+      { name: "fonts.swf", path: "assets/fonts.swf", size: 30506 },
+      { name: "game_3p", path: "assets/game_3p.swf", size: 2074907, resourceType: "GAME" }
+    ],
+    runtime: "js/Nitrome.js"
+  };
+
+  if (!window.PokiSDK) window.PokiSDK = STUB;
+  try { window.PokiSDK.setDebug(false); } catch (e) {}
+
+  Loader.init(config);
+
+  function boot() {
+    try {
+      Loader.runGame(() => {}, () => { window.__lock.setStarted(); });
+    } catch (e) { console.error("启动失败", e); }
+  }
+
+  if (window.PokiSDK && typeof window.PokiSDK.init === "function") {
+    window.PokiSDK.init().then(boot).catch(boot);
+  } else {
+    boot();
+  }
+})();
+</script>
+</body>
+</html>
