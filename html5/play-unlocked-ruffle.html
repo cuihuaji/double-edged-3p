@@ -95,6 +95,31 @@
     setTimeout(watchCanvas, 200);
   })();
 
+  /* ---- 音频保活：防止标签切后台被 Chrome 节流到 1Hz ----
+   * 播放一段无声循环音频后，Chrome 视标签为「正在播放音频」，
+   * 完全豁免后台节流（Discord/WebRTC 应用的标准做法）。
+   * 锁步联机下任何一端被节流，全房都会跟着卡。 */
+  (function keepAlive(){
+    var ctx = null;
+    function start(){
+      if (ctx) return;
+      try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); // 1 秒静音
+        var src = ctx.createBufferSource();
+        src.buffer = buf; src.loop = true;
+        var gain = ctx.createGain(); gain.gain.value = 0;  // 双保险：增益 0
+        src.connect(gain); gain.connect(ctx.destination);
+        src.start(0);
+        window.__audioKeepAlive = true;
+      } catch (e) {}
+    }
+    // 需要一次用户手势才能建 AudioContext：首次任意按键/点击即启动
+    window.addEventListener("keydown", start, { once: true });
+    window.addEventListener("pointerdown", start, { once: true });
+    window.addEventListener("mousedown", start, { once: true });
+  })();
+
   /* ---- 事件注入（与 play3p.html 同语义：联机锁步的输入通道） ---- */
   var KEYCODE = {
     ArrowLeft:37, ArrowUp:38, ArrowRight:39, ArrowDown:40,

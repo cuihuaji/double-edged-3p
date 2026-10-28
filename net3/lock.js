@@ -495,17 +495,33 @@
         }
       }
 
-      /* 不能用 requestAnimationFrame 驱动节拍器：后台标签页/headless 里 RAF 会被浏览器
-         冻结，锁步就永久停摆（监听实测 tickRAF 只注册不执行）。改用 setInterval，
-         上面的累加器逻辑保留：后台节流导致的迟帧会被记账、回前台补回来。 */
+      /* 节拍源：Web Worker 的 setInterval 不受后台标签 1Hz 节流影响。
+         主线程 setInterval 在标签切后台会被 Chrome 压到 1Hz，锁步直接掉到 1fps
+         （线上实测：房主切窗口回消息，全房跟着卡成幻灯片）。Worker 不受限。 */
     }
-    this._paceTimer = setInterval(tick, interval);
+    try {
+      const workerCode =
+        "let t=null;" +
+        "onmessage=function(e){" +
+        "  if(e.data==='start'){ if(!t) t=setInterval(()=>postMessage(1), " + interval + "); }" +
+        "  else if(e.data==='stop'){ if(t){clearInterval(t);t=null;} }" +
+        "};";
+      const blob = new Blob([workerCode], { type: "application/javascript" });
+      this._paceWorker = new Worker(URL.createObjectURL(blob));
+      this._paceWorker.onmessage = function () { tick(); };
+      this._paceWorker.postMessage("start");
+      this._paceTimer = null;   // Worker 模式下不用主线程定时器
+    } catch (e) {
+      // Worker 不可用（file:// 等极端环境）：退回主线程 setInterval
+      this._paceTimer = setInterval(tick, interval);
+    }
   };
 
   Lock.prototype.stop = function () {
     this._paceOn = false;
     clearInterval(this._readyT);
     if (this._paceTimer) clearInterval(this._paceTimer);
+    if (this._paceWorker) { try { this._paceWorker.postMessage("stop"); this._paceWorker.terminate(); } catch (e) {} }
     if (this.pc) { try { this.pc.close(); } catch (e) {} }
   };
 
