@@ -3,12 +3,6 @@
 <head>
 <meta charset="utf-8">
 <title>绝地双刃 · 三人联机</title>
-<script>
-/* 界面锁消解：若以非 localhost 打开，整体重定向到 http://localhost:<同端口>，
-   否则游戏会因 Poki sitelock 跳 poki.com/sitelock。任意来源（127.0.0.1 / 局域网 IP）
-   都能开，会自动纠正到 localhost；联机必须走本机 serve.ps1（默认就是 localhost:8740）。 */
-(function(){try{if(location.hostname!=="localhost"){location.replace("http://localhost:"+(location.port||"80")+location.pathname+location.search);}}catch(e){}})();
-</script>
 <style>
   * { box-sizing: border-box; }
   body {

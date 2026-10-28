@@ -66,18 +66,6 @@
   .hint { margin-top: 8px; font-size: 11px; color: #61707f; line-height: 1.5; }
   code { color: #8ab4d8; }
 </style>
-<script>
-/* 界面锁消解：若以非 localhost 打开（127.0.0.1 / 局域网 IP / 公网域名），整体重定向到
-   http://localhost:<同端口>，否则游戏会因 Poki sitelock 跳 poki.com/sitelock。
-   net3 本来就是每人本机 localhost 开服，重定向到 localhost 不影响加入流程与 PeerJS 信令。 */
-(function(){
-  try{
-    if(location.hostname!=="localhost"){
-      location.replace("http://localhost:"+(location.port||"80")+location.pathname+location.search);
-    }
-  }catch(e){}
-})();
-</script>
 </head>
 <body>
 <div id="wrap"><iframe id="game" allow="autoplay; fullscreen"></iframe></div>
