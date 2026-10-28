@@ -243,7 +243,7 @@
 })();
 </script>
 
-<script src="js/ruffle-nightly/ruffle.js"></script>
+<script src="js/ruffle-std/ruffle.js"></script>
 </head>
 <body>
 <div id="stage"></div>
@@ -265,8 +265,8 @@
        游戏的 addedToStage 初始化会抛 "Render backend does not support
        BitmapData.draw" 死在半路——画面能动但菜单按钮事件链没建立，
        表现为点什么都没反应（监听实测）。webgl 后端支持 draw。 */
-    renderer: "webgpu",
-    preferredRenderer: "webgpu",
+    renderer: "webgl",
+    preferredRenderer: "webgl",
     forceScale: true,
     scale: "showAll"
   }).then(function () {
