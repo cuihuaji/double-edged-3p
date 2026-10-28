@@ -163,7 +163,18 @@
       ev = new MouseEvent(type, o);
     }
     ev.__np = true;
-    c.dispatchEvent(ev);
+    /* Ruffle 0.7 的鼠标监听在 player 元素（shadow host）和 document 上，
+       不在 shadow 里的 canvas 上——只 dispatch 到 canvas 会石沉大海
+       （实测房主点 PLAY 完全无反应）。多层齐发，命中一层即生效。 */
+    var targets = [c];
+    var p = document.querySelector("ruffle-player");
+    if (p) targets.push(p);
+    [document, document.body, window].forEach(function (t) {
+      try { t && targets.push(t); } catch (e) {}
+    });
+    for (var i = 0; i < targets.length; i++) {
+      try { targets[i].dispatchEvent(ev); } catch (e) {}
+    }
   }
   L.applyEvents = function (list) {
     L.evCount = (L.evCount || 0) + list.length;
@@ -250,8 +261,12 @@
     unmuteOverlay: "hidden",
     splashScreen: null,
     letterbox: "off",
-    renderer: "canvas",
-    preferredRenderer: "canvas",
+    /* 必须用 WebGL：canvas2d 渲染后端不支持 BitmapData.draw，
+       游戏的 addedToStage 初始化会抛 "Render backend does not support
+       BitmapData.draw" 死在半路——画面能动但菜单按钮事件链没建立，
+       表现为点什么都没反应（监听实测）。webgl 后端支持 draw。 */
+    renderer: "webgl",
+    preferredRenderer: "webgl",
     forceScale: true,
     scale: "showAll"
   }).then(function () {
