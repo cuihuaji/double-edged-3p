@@ -122,11 +122,34 @@
     return ran;
   }
 
-  /* ---- 载入阶段自由跑（资源加载靠 Promise，不靠帧，但要给预加载动画帧） ---- */
-  var freeT = setInterval(function () {
-    if (L.phase !== "loading") { clearInterval(freeT); return; }
+  /* ---- 帧驱动三段式 ----
+   * loading：30fps 自转（预加载动画）
+   * ready（等联机）：30fps 自转继续——等朋友时游戏保持可看可点
+   *   （点击在锁步起跑前由 applyLocalEvents 直注游戏，见下）
+   * running（锁步接管）：freeT 停转，lock.js 的节拍器独占推帧
+   *
+   * 节流免疫：自转节拍走 Web Worker（Blob 内联），Worker 的定时器不受
+   * 标签页后台节流影响——同机多窗 / 切后台时输入帧照常生成，锁步不卡闸。
+   * Worker 不可用（极端环境）时回退主线程 setInterval。 */
+  var _wTicker = null, _wFallback = null;
+  function _tick() {
+    if (L.phase === "running") { stopTicker(); return; }
     stepOnce();
-  }, STEP);
+  }
+  function stopTicker() {
+    if (_wTicker) { try { _wTicker.terminate(); } catch (e) {} _wTicker = null; }
+    if (_wFallback) { clearInterval(_wFallback); _wFallback = null; }
+  }
+  try {
+    var wsrc = "var t=null;onmessage=function(e){if(e.data==='start'){if(!t)t=setInterval(function(){postMessage(0)}," +
+      Math.round(STEP) + ");}else if(e.data==='stop'){clearInterval(t);t=null;}};";
+    _wTicker = new Worker(URL.createObjectURL(new Blob([wsrc], { type: "text/javascript" })));
+    _wTicker.onmessage = _tick;
+    _wTicker.postMessage("start");
+  } catch (e) {
+    _wFallback = setInterval(_tick, STEP);
+  }
+  window.__stopTicker = stopTicker;
 
   /* ---- 输入注入 ---- */
   var KEYCODE = {
@@ -222,7 +245,7 @@
     L.started = true;
     L.frames = 0;
     L.phase = "ready";
-    clearInterval(freeT);
+    /* freeT 已由 Web Worker 节拍器取代（见上方），这里不再 clearInterval */
     fitCanvas();
     setTimeout(fitCanvas, 300);
     setTimeout(fitCanvas, 1200);
@@ -268,6 +291,30 @@
   };
 
   window.__lock = L;
+
+  /* ---- 静音音频保活：豁免 Chrome 后台节流 ----
+   * 首次用户手势时启动 0 增益循环音频。Chrome 视标签为「正在播放音频」，
+   * 完全豁免后台节流（切后台/同机多窗时 timer 不再降到 1Hz）。
+   * 锁步联机下任何一端被节流，全房都要跟着等它——此保活是刚需。 */
+  (function keepAlive() {
+    var ctx = null;
+    function start() {
+      if (ctx) return;
+      try {
+        ctx = new (window.AudioContext || window.webkitAudioContext)();
+        var buf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); // 1 秒静音
+        var src = ctx.createBufferSource();
+        src.buffer = buf; src.loop = true;
+        var gain = ctx.createGain(); gain.gain.value = 0;
+        src.connect(gain); gain.connect(ctx.destination);
+        src.start(0);
+        document.removeEventListener("pointerdown", start);
+        document.removeEventListener("keydown", start);
+      } catch (e) {}
+    }
+    document.addEventListener("pointerdown", start);
+    document.addEventListener("keydown", start);
+  })();
 })();
 </script>
 
