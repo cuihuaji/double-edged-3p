@@ -271,25 +271,9 @@
 })();
 </script>
 
-<!-- 界面锁消解（页面级去锁）：
-     锁的判定只读 window.location.hostname（实测：localhost 放行，127.0.0.1 / 局域网 IP 跳 poki.com/sitelock）。
-     由于 Chromium 不允许重写 Location.prototype.hostname 的 getter，最干净的做法是：
-     在一切脚本之前，若本页以非 localhost 打开，则整体重定向到 http://localhost:<同端口> 再打开，
-     这样 hostname 自然变成 localhost、锁放行；且所有资源仍同机同端口，不影响 net3 同域嵌入。
-     仅对顶层窗口执行（iframe 内由父页负责重定向，避免跨域）。 -->
-<script>
-(function () {
-  "use strict";
-  try {
-    if (window === window.top && location.hostname !== "localhost") {
-      var u = "http://localhost:" + (location.port || "80") + location.pathname + location.search;
-      location.replace(u);
-      // 阻断后续脚本执行，避免重复加载
-      throw new Error("redirect-to-localhost");
-    }
-  } catch (e) {}
-})();
-</script>
+<!-- 界面锁消解（历史）：原 localhost 重定向已移除——锁已在 Nitrome.js(AwayFL) 里
+     直接 NOP（域名白名单重定向分支删除），公网托管任何主机名都放行。 -->
+<script>(function(){ /* sitelock removed */ })();</script>
 
 <!-- 导航兜底（无害）：万一锁走 window.open / location.href 分支，也静默丢弃 sitelock / not-available -->
 <script>
