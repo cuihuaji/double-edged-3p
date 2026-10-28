@@ -17,6 +17,30 @@
   var Q = new URLSearchParams(location.search);
   var SEED = parseInt(Q.get("seed") || "20261027", 10) >>> 0;
   var STEP = 1000 / 30;
+  /* solo 模式：单机玩零劫持。必须在一切劫持之前判断——
+     虚拟时钟驱动下画面走虚拟时钟、声音走真实 AudioContext，两者漂移产生
+     快进感和音画不同步（实测）；单机不需要确定性，Ruffle 原生跑最稳。
+     联机入口（host3/join3 的 iframe）不带 solo，走下面的确定性路径。 */
+  var SOLO = Q.get("solo") === "1";
+  if (SOLO) {
+    window.__soloMode = true;
+    var _p = document.querySelector("ruffle-player") || document.getElementById("stage");
+    // 提供最小 __lock 兼容面（单机无消费者，仅为不报错）
+    window.__lock = {
+      started: true, setStarted: function(){}, seed: SEED,
+      stepOnce: function(){ return false; }, queueLen: function(){ return 0; },
+      frames: function(){ return 0; }, qLen: 0, canvasReady: true,
+      hash: function(){ return 0; }, applyEvents: function(){},
+      canvas: function () {
+        var p = document.querySelector("ruffle-player");
+        if (p && p.shadowRoot) { var c = p.shadowRoot.querySelector("canvas"); if (c) return c; }
+        return null;
+      }
+    };
+    window.__pauseAuto = function(){}; window.__resumeAuto = function(){};
+    window.__stepOnce = function(){ return false; }; window.__queueLen = function(){ return 0; };
+    return;  // 结束确定性运行时；Ruffle 用原生 RAF 自由运行
+  }
 
   var L = {
     seed: SEED, frames: 0, started: false, phase: "loading",
@@ -217,7 +241,8 @@
   /* —— 帧驱动：默认自转（单机/联机皆可），联机方可用 __pauseAuto() 接管 ——
    * Ruffle 的渲染循环依赖 requestAnimationFrame；确定性 RAF 队列没人消费就永远黑屏。
    * 这里用真实 setInterval 按虚拟 30fps 节奏消费队列：单机直接可玩；
-   * 联机时 lock.js 调 __pauseAuto() 后用自己的同步循环驱动 stepOnce。 */
+   * 联机时 lock.js 调 __pauseAuto() 后用自己的同步循环驱动 stepOnce。
+   * （solo 模式已在函数开头提前 return，不会走到这里。） */
   window.__autoDrain = true;
   window.__pauseAuto = function () { window.__autoDrain = false; };
   window.__resumeAuto = function () { window.__autoDrain = true; };
