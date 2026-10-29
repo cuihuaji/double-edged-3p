@@ -306,23 +306,47 @@
    * 加载），画布还不存在，就直接报 captureStream 不可用，看起来像浏览器不支持，
    * 其实是时序问题。这里改成：等画布出现（默认 15 秒），并且把失败原因分成
    * 「没有画布」和「浏览器没有这个 API」两种，各自给明确提示。 */
+  /* iframe 现状描述：区分「文档还没来」「来了但还没画布」「画布已就绪」 */
+  function describeIframe(d) {
+    try {
+      if (!d) return "iframe 文档还没准备好";
+      const n = d.querySelectorAll("canvas").length;
+      const txt = ((d.body && d.body.innerText) || "").replace(/\s+/g, " ").slice(0, 100);
+      return "ready=" + d.readyState + " canvas=" + n + (txt ? " 内容：" + txt : "");
+    } catch (e) { return "读取 iframe 失败：" + String((e && e.message) || e); }
+  }
+
+  /* 等画布：一直等到游戏真正创建画布为止。
+   * 之前用固定 15 秒超时，遇到冷缓存（整包重下 SWF 2MB + 资源）就会假失败。
+   * 现在默认上限 180 秒，期间每 5/15/30/60 秒（之后每 30 秒）报一次进度，
+   * 这样「还没启动完」和「iframe 根本没加载」能一眼分开。 */
   async function waitCanvas(ms) {
     const t0 = Date.now();
+    const marks = [5, 15, 30, 60];
+    let lastMark = -1;
     for (;;) {
-      let cv = null;
+      let cv = null, d = null;
       try {
-        const d = iframe && iframe.contentDocument;
+        d = iframe && iframe.contentDocument;
         cv = d && d.querySelector("canvas");
       } catch (e) {}
-      if (cv) return cv;
-      if (Date.now() - t0 >= ms) return null;
+      if (cv) return { cv: cv, waited: Date.now() - t0 };
+      const el = Date.now() - t0;
+      if (el >= ms) return { cv: null, waited: el, why: describeIframe(d) };
+      const sec = Math.round(el / 1000);
+      const due = marks.indexOf(sec) >= 0 || (sec >= 90 && sec % 30 === 0);
+      if (due && sec !== lastMark) {
+        lastMark = sec;
+        window.__diag && window.__diag.report("media", "等游戏画布 " + sec + "s", describeIframe(d), "info");
+      }
       await new Promise((r) => setTimeout(r, 200));
     }
   }
 
   async function captureGame(ms) {
-    const cv = await waitCanvas(ms || 15000);
-    if (!cv) throw new Error("等不到游戏画布（游戏还没启动完）。等画面出来后再让好友加入");
+    const wait = await waitCanvas(ms || 180000);
+    const cv = wait.cv;
+    if (!cv) throw new Error("等了 " + Math.round(wait.waited / 1000) + " 秒仍然没有画布（" + wait.why + "）");
     if (typeof cv.captureStream !== "function") {
       let ua = "未知内核";
       try { ua = (navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/) || ["未知内核"])[0]; } catch (e) {}
@@ -336,9 +360,14 @@
       else { try { tmp.getTracks().forEach((x) => x.stop()); } catch (e) {} }
     } catch (e) {}
     const stream = manual ? manual.stream : cv.captureStream(30);
-    return { stream, track: manual ? manual.track : null, manual: !!manual };
+    let res = "";
+    try {
+      const st = stream.getVideoTracks()[0].getSettings();
+      res = (st.width || "?") + "×" + (st.height || "?");
+    } catch (e) {}
+    window.__diag && window.__diag.report("media", "视频流已建立", res + (manual ? " 手动推帧" : " 定时捕获") + "，等画布 " + Math.round(wait.waited / 1000) + "s", "info");
+    return { stream: stream, track: manual ? manual.track : null, manual: !!manual };
   }
-
   window.__npTestCapture = async (ms) => {
     try {
       const g = await captureGame(ms || 8000);
@@ -367,7 +396,7 @@
       conn.on("open", async () => {
         try {
           if (!mediaStream) {
-            const got = await captureGame(15000);
+            const got = await captureGame(180000);
             mediaStream = got.stream;
             try { if (got.track && iframe.contentWindow) iframe.contentWindow.__npCapTrack = got.track; } catch (e) {}
             try { window.__npManualCapture = got.manual; } catch (e) {}
@@ -405,7 +434,7 @@
        * 重建捕获流（同样手动推帧）并重新呼叫对端，不依赖对根因的猜测。 */
       window.__npRecapture = async () => {
         try {
-          const got = await captureGame(3000);
+          const got = await captureGame(5000);
           try { if (mediaStream) mediaStream.getTracks().forEach((t2) => t2.stop()); } catch (e) {}
           try { iframe.contentWindow.__npCapTrack = got.track; } catch (e) {}
           mediaStream = got.stream;
