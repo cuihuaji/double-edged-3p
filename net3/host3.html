@@ -274,8 +274,33 @@
     $("v-delay").textContent = Math.round(lock.delay / 30 * 1000) + " ms";
   }, 300);
 
+  /* ---------- 中文字幕（房主侧）----------
+   * 每 300ms 从 iframe 的 AVM 舞台树读可见文本 → 查表 → 底部字幕条显示，
+   * 文本变化时通过 DataChannel 同步给好友（好友端视频里是英文，字幕由本地 HTML 画）。
+   * 好友看到的是"同一句中文"，与视频帧无关，不受码率/丢帧影响。 */
+  const deConns = [];
+  let deLast = "";
+  function deSample() {
+    let texts = [];
+    try {
+      const w = iframe.contentWindow;
+      texts = window.DE_collect ? window.DE_collect(w) : [];
+    } catch (e) {}
+    let line = "";
+    try { line = window.DE_TRANSLATE ? window.DE_TRANSLATE(texts) : ""; } catch (e) {}
+    if (line === deLast) return;
+    deLast = line;
+    if (window.DE_bar) window.DE_bar(line, 7000);
+    for (let i = 0; i < deConns.length; i++) {
+      try { if (deConns[i] && deConns[i].open) deConns[i].send({ sys: "sub", t: line }); } catch (e) {}
+    }
+  }
+  setInterval(deSample, 300);
+  try { window.__deSample = deSample; } catch (e) {}
+
   /* ---------- PeerJS：短房号 ---------- */
   function bindConn(conn) {
+    try { deConns.push(conn); } catch (e) {}
     const adapter = {
       _q: [],
       send: (o) => { if (conn.open) { try { conn.send(o); } catch (e) {} } else adapter._q.push(o); },

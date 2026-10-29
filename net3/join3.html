@@ -182,6 +182,8 @@
     lock.attachTransport(adapter);
     conn.on("open", () => { adapter.ready = true; const q = adapter._q.splice(0); q.forEach((o) => { try { conn.send(o); } catch (e) {} }); adapter.onopen && adapter.onopen(); });
     conn.on("data", (d) => adapter.onmessage && adapter.onmessage(d));
+    /* 房主推来的中文字幕（好友端画面是英文，字幕在本地 HTML 上画） */
+    conn.on("data", (d) => { if (d && d.sys === "sub" && window.DE_bar) window.DE_bar(d.t, 7000); });
     conn.on("close", () => { adapter.ready = false; adapter.onclose && adapter.onclose(); });
     conn.on("error", (e) => window.__diag && window.__diag.report("dc", "PeerJS 连接出错",
       String((e && e.type) || e), "err"));

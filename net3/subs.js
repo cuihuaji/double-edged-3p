@@ -77,3 +77,122 @@ window.DE_SUBS = [
   window.DE_LOOKUP = function (raw) { return map[norm(raw)] || ""; };
   window.DE_NORM = norm;
 })();
+
+/* ---- 运行时采集：把 AVM 里所有可见文本框的内容读出来 ----
+ * 实测：游戏里能读到的文字都在 TextField 的 $Bg_text 上（舞台树 → 属性）。
+ * 遍历深度 9 足够覆盖 441 个节点，每 300ms 跑一次开销可忽略。 */
+window.DE_collect = function (w) {
+  try {
+    const pg = w.AVMPlayerPoki && w.AVMPlayerPoki._avmHandler && w.AVMPlayerPoki._avmHandler._playerglobal;
+    const root = pg && pg._stage && pg._stage._stage && pg._stage._stage.getChildAt(0);
+    if (!root) return [];
+    const out = [], seen = new Set();
+    (function walk(o, d) {
+      if (!o || d > 9 || seen.has(o)) return;
+      seen.add(o);
+      let ns; try { ns = Object.getOwnPropertyNames(o); } catch (e) { return; }
+      if (ns.indexOf("$Bg_text") >= 0) {
+        let v = ""; try { v = o.$Bg_text; } catch (e) {}
+        if (typeof v === "string" && v.trim() && v !== "undefined") out.push(v.trim());
+      }
+      let n = 0; try { n = o.numChildren || 0; } catch (e) {}
+      for (let i = 0; i < n; i++) { let c = null; try { c = o.getChildAt(i); } catch (e) {} if (c) walk(c, d + 1); }
+    })(root, 0);
+    return out;
+  } catch (e) { return []; }
+};
+
+/* ---- 匹配：支持打字机（气泡逐字出现）----
+ * 屏幕上只有半句时，用「屏幕文本是词条前缀」来认定是同一条台词。 */
+window.DE_MATCH = function (raw) {
+  try {
+    var n = window.DE_NORM(raw);
+    if (!n || n.length < 3) return "";
+    var exact = window.DE_LOOKUP(raw);
+    if (exact) return exact;
+    if (n.length < 4) return "";
+    var best = "", bestLen = 0;
+    for (var i = 0; i < window.DE_SUBS.length; i++) {
+      var k = window.DE_NORM(window.DE_SUBS[i][0]);
+      if (k.indexOf(n) === 0 && n.length > bestLen) { best = window.DE_SUBS[i][1]; bestLen = n.length; }
+    }
+    return best;
+  } catch (e) { return ""; }
+};
+
+/* ---- 字幕条（房主、好友共用）---- */
+window.DE_bar = (function () {
+  var el = null, inner = null, hideTimer = 0, enabled = true;
+  function ensure() {
+    if (el && el.parentNode) return;
+    el = document.createElement("div");
+    el.id = "de-sub";
+    el.style.cssText = "position:fixed;left:0;right:0;bottom:16px;z-index:9999;display:none;" +
+      "pointer-events:none;text-align:center;" +
+      "font:600 20px/1.5 -apple-system,'Segoe UI','Microsoft YaHei',sans-serif;" +
+      "color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.95),0 0 3px rgba(0,0,0,.85)";
+    inner = document.createElement("span");
+    inner.style.cssText = "display:inline-block;max-width:min(92vw,860px);padding:7px 18px;" +
+      "border-radius:10px;background:rgba(0,0,0,.62)";
+    el.appendChild(inner);
+    document.body.appendChild(el);
+  }
+  function set(text, holdMs) {
+    ensure();
+    if (!enabled || !text) { el.style.display = "none"; return; }
+    inner.textContent = text;
+    el.style.display = "block";
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(function () { el.style.display = "none"; }, holdMs || 7000);
+  }
+  set.toggle = function () {
+    enabled = !enabled;
+    if (!enabled) { try { el.style.display = "none"; } catch (e) {} }
+    window.__diag && window.__diag.report("sub", enabled ? "字幕已开" : "字幕已关", "", "info");
+    return enabled;
+  };
+  set.enabled = function () { return enabled; };
+  return set;
+})();
+
+/* ---- 常见界面词（不是台词，但屏幕上会出现）---- */
+window.DE_UI = {
+  "PLAY": "开始游戏",
+  "HELP": "玩法说明",
+  "CREDITS": "制作名单",
+  "REDEFINE KEYS": "重新设置按键",
+  "1 PLAYER": "单人玩",
+  "2 PLAYERS": "双人玩",
+  "BACK": "返回",
+  "PLAYER SELECT": "选择人数",
+  "BACK TO MAP": "返回地图",
+  "NEXT STAGE": "下一关",
+  "TRY AGAIN": "再试一次",
+  "LOADING LEVEL": "关卡加载中…",
+  "LEVEL CLEAR": "过关",
+  "STAGE COMPLETE!": "关卡完成！",
+  "GAME OVER!": "游戏结束",
+  "PLAYER 1 WINS!": "玩家 1 获胜！",
+  "ENTER YOUR NAME": "输入你的名字",
+  "ENTER TEXT": "输入文字",
+  "NO LEADERBOARD DATA": "暂无排行榜数据",
+  "SCORE SUBMITTED": "分数已提交",
+  "HELP ME!": "救命啊！"
+};
+
+/* 界面词索引：键统一归一化，否则 STAGE COMPLETE! 这类带标点的查不到 */`nwindow.DE_UI_N = (function () {`n  var m = {};`n  for (var k in window.DE_UI) m[window.DE_NORM(k)] = window.DE_UI[k];`n  return m;`n})();`n`n/* 一行字幕：优先台词，其次界面词；纯数字忽略 */
+window.DE_TRANSLATE = function (texts) {
+  var out = [];
+  for (var i = 0; i < texts.length; i++) {
+    var raw = texts[i];
+    if (/^[\d\s:,.%+\-]+$/.test(raw)) continue;
+    var zh = window.DE_MATCH(raw);
+    if (!zh) {
+      var k = window.DE_NORM(raw);
+      if (window.DE_UI[k]) zh = window.DE_UI[k];
+    }
+    if (!zh) continue;
+    if (out.indexOf(zh) < 0) out.push(zh);
+  }
+  return out.join("　");
+};
