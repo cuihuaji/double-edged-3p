@@ -251,6 +251,54 @@
       navigator.clipboard.writeText(roomId).catch(() => {});
     });
     peer.on("connection", bindConn);
+    /* ---- 视频流广播（远程同乐模式）----
+     * 好友不跑游戏副本，直接看房主画面；好友的鼠标/键盘事件回传，由房主注入本地游戏。
+     * 菜单/开场动画零同步问题（状态只有房主一份），战斗阶段再切锁步。 */
+    let mediaStream = null;
+    peer.on("connection", (conn) => {
+      conn.on("open", async () => {
+        try {
+          if (!mediaStream) {
+            const w = iframe.contentWindow, d = iframe.contentDocument;
+            const cv = d && d.querySelector("canvas");
+            if (!cv || !cv.captureStream) throw new Error("captureStream 不可用");
+            mediaStream = cv.captureStream(30);
+            // 音频：AwayFL 用 WebAudio，桥接到流（拿不到就只传画面）
+            try {
+              const AC = w.AudioContext || w.webkitAudioContext;
+              if (AC && !w.__npAudioDst) {
+                w.__npAudioDst = new AC().createMediaStreamDestination();
+                // 找到目的地链：AwayFL 的 master gain 不易定位，先只发画面
+              }
+            } catch (e) {}
+          }
+          const call = peer.call(conn.peer, mediaStream);
+          window.__npCall = call;
+        } catch (err) { window.__diag && window.__diag.report("media", "视频流失败", String(err && err.message || err), "warn"); }
+      });
+      conn.on("data", (data) => {
+        // 好友回传的输入事件 → 注入 iframe（房主本地跑真游戏）
+        if (!data || !data.evt) return;
+        try {
+          const w = iframe.contentWindow, d = iframe.contentDocument;
+          const cv = d.querySelector("canvas") || d.body;
+          const O = {
+            clientX: data.x, clientY: data.y, button: data.button || 0, buttons: data.buttons || 0,
+            bubbles: true, cancelable: true, view: w
+          };
+          let ev;
+          if (data.evt.indexOf("key") === 0) {
+            ev = new w.KeyboardEvent(data.evt, { key: data.key, code: data.code, keyCode: data.keyCode, bubbles: true, cancelable: true });
+          } else if (data.evt.indexOf("pointer") === 0) {
+            O.pointerId = 1; O.pointerType = "mouse"; O.isPrimary = true;
+            ev = new w.PointerEvent(data.evt, O);
+          } else {
+            ev = new w.MouseEvent(data.evt, O);
+          }
+          (data.target === "doc" ? d : cv).dispatchEvent(ev);
+        } catch (e) {}
+      });
+    });
     peer.on("error", (e) => {
       const t = (e && e.type) || String(e);
       // id 撞车 / 信令抖动：换个后缀重开，最多 6 次

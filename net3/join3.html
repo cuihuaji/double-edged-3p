@@ -205,6 +205,37 @@
 
     peer = new Peer(null, PEER_OPTS);
     peer.on("open", tryConnect);
+    /* ---- 远程同乐：接收房主视频流 + 把本机输入转发给房主 ---- */
+    peer.on("call", (call) => {
+      call.on("stream", (remote) => {
+        const v = document.getElementById("rv");
+        v.srcObject = remote;
+        v.style.display = "block";
+        v.play().catch(() => {});
+        v.onclick = () => v.play();
+        const hint = document.getElementById("room-hint");
+        if (hint) hint.textContent = "已接入房主画面（远程同乐）。你的键鼠实时传给房主，菜单由房主操作。";
+      });
+      call.answer();
+    });
+
+    function fwdInput(e) {
+      if (!peer || !peer.open) return;
+      const all = peer.connections || {};
+      let conn = null;
+      for (const k in all) { if (all[k] && all[k][0] && all[k][0].open) { conn = all[k][0]; break; } }
+      if (!conn) return;
+      if (e.type.indexOf("key") === 0) {
+        conn.send({ evt: e.type, key: e.key, code: e.code, keyCode: e.keyCode });
+      } else {
+        conn.send({ evt: e.type, x: e.clientX, y: e.clientY, button: e.button, buttons: e.buttons });
+      }
+    }
+    document.addEventListener("keydown", fwdInput, true);
+    document.addEventListener("keyup", fwdInput, true);
+    document.addEventListener("mousedown", fwdInput, true);
+    document.addEventListener("mouseup", fwdInput, true);
+    document.addEventListener("mousemove", fwdInput, true);
     peer.on("error", (e) => {
       const t = (e && e.type) || String(e);
       // 房主还没开房 / 刚刷新：自动重试，最多等 40 秒
