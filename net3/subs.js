@@ -189,7 +189,7 @@ window.DE_TRANSLATE = function (texts) {
     var zh = window.DE_MATCH(raw);
     if (!zh) {
       var k = window.DE_NORM(raw);
-      if (window.DE_UI[k]) zh = window.DE_UI[k];
+      if (window.DE_UI_N[k]) zh = window.DE_UI_N[k];
     }
     if (!zh) continue;
     if (out.indexOf(zh) < 0) out.push(zh);
