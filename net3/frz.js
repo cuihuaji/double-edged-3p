@@ -32,6 +32,8 @@
     try {
       var f = hostIfr.contentWindow;
       if (!f || !f.__lock) return null;
+      /* 载入阶段帧计数本来就是 0，不能当冻结 —— 必须等 boot 完成（started） */
+      if (f.__lock.phase === "loading" || !f.__lock.started) return null;
       return {
         k: f.__lock.frames,
         extra: "phase=" + f.__lock.phase + " q=" + f.__lock.qLen +
