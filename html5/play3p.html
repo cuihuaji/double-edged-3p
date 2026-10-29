@@ -132,6 +132,15 @@
    * 标签页后台节流影响——同机多窗 / 切后台时输入帧照常生成，锁步不卡闸。
    * Worker 不可用（极端环境）时回退主线程 setInterval。 */
   var _wTicker = null, _wFallback = null;
+  /* 锁步起跑时由 lock.js 调用：停自转 Worker，帧驱动权交给锁步节拍器
+   * （缺了这个自转和锁步双源推帧 → 全局加速 + 事件时序错乱） */
+  window.__pauseAuto = function () {
+    if (L.phase === "running") return;
+    L.phase = "running";
+    stopTicker();
+    try { if (window.__stopTicker) window.__stopTicker(); } catch (e) {}
+  };
+
   function _tick() {
     if (L.phase === "running") { stopTicker(); return; }
     stepOnce();
@@ -202,7 +211,7 @@
       ev = new MouseEvent(type, o);
     }
     ev.__np = true;
-    c.dispatchEvent(ev);
+    (c.parentElement || c).dispatchEvent(ev);   // 派发到 container 本体（AwayFL 监听处）
   }
 
   /* ---- 屏蔽原生输入：游戏只接受按帧注入的合成事件 ---- */
