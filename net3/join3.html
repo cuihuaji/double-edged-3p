@@ -133,6 +133,13 @@
       log: (m) => console.log("[lock]", m),
       diag: (c, m, d, s) => window.__diag && window.__diag.report(c, m, d, s)
     });
+    /* 远程同乐（nolock）：好友不参与锁步。桩掉起跑/发送/闸门——
+     * 房主端等不到好友 rd，play3p 保持 ready 自转，全程自由跑不冻结。 */
+    lock._maybeStart = function () {};
+    lock._startPacing = function () {};
+    lock._sendOwn = function () {};
+    lock._send = function () {};
+    lock.attachTransport = function (t) { lock.transport = t; };
     window.__np.lock = lock;
     return lock;
   }
@@ -212,6 +219,11 @@
         v.srcObject = remote;
         v.style.display = "block";
         try { document.getElementById("game").src = "about:blank"; } catch (e) {}   // 远程同乐：好友本地不跑游戏副本
+        // 彻底停掉好友端锁步引擎（play3p 已死，lock 节拍器还在空转报警 + 房主会等它的帧导致冻结）
+        try {
+          const L = window.__np && window.__np.lock;
+          if (L) { L.stop(); L.started = false; L._pumpOnce = function () { return false; }; L._send = function () {}; L._sendOwn = function () {}; }
+        } catch (e2) {}
         v.play().catch(() => {});
         v.onclick = () => v.play();
         const hint = document.getElementById("room-hint");
