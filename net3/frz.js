@@ -27,6 +27,24 @@
   var isHost = !!hostIfr && !vid;
 
   var last = -1, stall = 0, loggedAt = -1;
+  var encLast = -1, encStall = 0, encNow = -1;
+
+  /* 房主侧：读 WebRTC 发送端实际编出的帧数。
+   * framesEncoded 停滞而 __lock.frames 继续增长 = 游戏在跑但 canvas 捕获不再产帧
+   * （典型原因：标签页不可见/被遮挡时 Chrome 暂停 canvas 合成捕获）。
+   * 两者同时停滞 = 房主进程本身卡住。这是区分两种冻结的决定性指标。 */
+  function sampleEncoded() {
+    try {
+      var call = window.__npCall;
+      var pc = call && call.peerConnection;
+      if (!pc) return;
+      pc.getStats().then(function (s) {
+        s.forEach(function (r) {
+          if (r.type === "outbound-rtp" && typeof r.framesEncoded === "number") encNow = r.framesEncoded;
+        });
+      }).catch(function () {});
+    } catch (e) {}
+  }
 
   function sampleHost() {
     try {
@@ -37,7 +55,8 @@
       return {
         k: f.__lock.frames,
         extra: "phase=" + f.__lock.phase + " q=" + f.__lock.qLen +
-               " rafErr=" + ((f.__rafErrs && f.__rafErrs.length) || 0)
+               " rafErr=" + ((f.__rafErrs && f.__rafErrs.length) || 0) +
+               " cap=" + encNow + " vis=" + document.visibilityState
       };
     } catch (e) { return null; }
   }
@@ -61,8 +80,15 @@
   }
 
   setInterval(function () {
+    if (isHost) sampleEncoded();
     var s = isHost ? sampleHost() : sampleGuest();
     var who = isHost ? "房主" : "好友";
+
+    /* 编码端独立停滞计数：区分「游戏卡」和「捕获卡」 */
+    if (isHost) {
+      if (encNow >= 0 && encNow === encLast) encStall++; else encStall = 0;
+      encLast = encNow;
+    }
 
     if (!s) {
       el.style.color = "#c9d1d9";
@@ -86,8 +112,11 @@
         } catch (e) {}
       }
     } else {
-      el.style.color = "#39d353";
-      el.textContent = who + (isHost ? " 帧=" : " 视频帧=") + s.k + " · " + s.extra;
+      /* 游戏帧在涨、但编码帧不涨 → 视频链路单独卡住（最可能：标签页不可见/被遮挡，
+       * Chrome 暂停 canvas 合成捕获）。这是「好友看到定格、房主其实还在跑」的指纹。 */
+      var capWarn = isHost && encStall >= 2 ? " ⚠cap停" + (encStall + 1) + "s" : "";
+      el.style.color = capWarn ? "#ffa657" : "#39d353";
+      el.textContent = who + (isHost ? " 帧=" : " 视频帧=") + s.k + " · " + s.extra + capWarn;
       loggedAt = -1;
     }
   }, 1000);
