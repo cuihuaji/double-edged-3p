@@ -304,6 +304,13 @@
 
   window.__lock = L;
 
+  /* ---- 远程同乐（nolock）：游戏进战斗时会调 window.__pauseAuto 想把帧权交给锁步，
+   * 但本模式没有锁步接管 → 一旦停在自转上游戏就冻结。nolock 下让它变空操作，
+   * 游戏永远用自转 Worker 跑（好友端是视频流，无需确定性）。 ---- */
+  if (new URLSearchParams(location.search).has("nolock")) {
+    window.__pauseAuto = function () {};
+  }
+
   /* ---- 静音音频保活：豁免 Chrome 后台节流 ----
    * 首次用户手势时启动 0 增益循环音频。Chrome 视标签为「正在播放音频」，
    * 完全豁免后台节流（切后台/同机多窗时 timer 不再降到 1Hz）。
