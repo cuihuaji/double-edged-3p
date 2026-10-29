@@ -348,6 +348,22 @@
           }
           const call = peer.call(conn.peer, mediaStream);
           window.__npCall = call;
+          /* 抗拥塞：优先保帧率并限码率。
+           * 带宽波动时浏览器默认会先砍分辨率/帧率，极端情况下编码器干脆不再产帧，
+           * 表现和「捕获停住」完全一样（framesEncoded 停、好友画面定格）。
+           * maintain-framerate + 码率上限让画面优先保持连续。 */
+          try {
+            const pc = call && call.peerConnection;
+            const sender = pc && pc.getSenders && pc.getSenders()[0];
+            if (sender) {
+              const p = sender.getParameters();
+              p.degradationPreference = "maintain-framerate";
+              if (!p.encodings || !p.encodings.length) p.encodings = [{}];
+              p.encodings[0].maxBitrate = 1500000;
+              p.encodings[0].maxFramerate = 30;
+              sender.setParameters(p).catch(() => {});
+            }
+          } catch (e) {}
         } catch (err) { window.__diag && window.__diag.report("media", "视频流失败", String(err && err.message || err), "warn"); }
       });
       /* 自愈入口：frz.js 检测到「游戏在跑但捕获/编码停住」时调用。

@@ -28,6 +28,8 @@
 
   var last = -1, stall = 0, loggedAt = -1;
   var encLast = -1, encStall = 0, encNow = -1;
+  /* 编码器细分指标：区分「捕获没产帧」和「产了但被带宽压住不编」 */
+  var encSent = -1, encBytes = -1, encQlr = "?", encRes = "?";
   /* 版本标记：写在角标最前面，一眼确认浏览器跑的是不是最新代码 */
   var VERSION = "v4";
   var recovAt = 0, recovCount = 0;
@@ -63,7 +65,13 @@
       if (!pc) return;
       pc.getStats().then(function (s) {
         s.forEach(function (r) {
-          if (r.type === "outbound-rtp" && typeof r.framesEncoded === "number") encNow = r.framesEncoded;
+          if (r.type === "outbound-rtp" && typeof r.framesEncoded === "number") {
+            encNow = r.framesEncoded;
+            if (typeof r.framesSent === "number") encSent = r.framesSent;
+            if (typeof r.bytesSent === "number") encBytes = r.bytesSent;
+            if (r.qualityLimitationReason) encQlr = r.qualityLimitationReason;
+            if (r.frameWidth && r.frameHeight) encRes = r.frameWidth + "x" + r.frameHeight;
+          }
         });
       }).catch(function () {});
     } catch (e) {}
@@ -79,7 +87,9 @@
         k: f.__lock.frames,
         extra: "phase=" + f.__lock.phase + " q=" + f.__lock.qLen +
                " rafErr=" + ((f.__rafErrs && f.__rafErrs.length) || 0) +
-               " cap=" + encNow + " vis=" + document.visibilityState
+               " cap=" + encNow + " sent=" + encSent + " B=" + encBytes +
+               " qlr=" + encQlr + " res=" + encRes +
+               " vis=" + document.visibilityState
       };
     } catch (e) { return null; }
   }
