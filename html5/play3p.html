@@ -198,8 +198,8 @@
     if (!c) return;
     var r = c.getBoundingClientRect();
     var o = {
-      clientX: Math.round(r.left + r.width * fx),
-      clientY: Math.round(r.top + r.height * fy),
+      clientX: Math.round(r.left + r.width * fx * dpr),
+      clientY: Math.round(r.top + r.height * fy * dpr),
       bubbles: true, cancelable: true, composed: true, view: window,
       button: 0, buttons: (type === "pointerdown" || type === "mousedown") ? 1 : 0
     };
