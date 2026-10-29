@@ -306,7 +306,42 @@
     get peerOpen() { return !!(peer && peer.open); },
     createOffer: () => lock.createOffer().then((c) => "O." + SEED.toString(36) + "." + c),
     acceptAnswer: (v) => lock.acceptAnswer(v.replace(/^A\.[^.]*\./, ""))
-  };
+
+  /* ---------- 内置监听器：面板底部实时显示锁步卡点 ---------- */
+  (function mon() {
+    let box = document.getElementById("v-mon");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "v-mon";
+      box.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid #232a34;font-size:11px;line-height:1.5;color:#8fa3b8;white-space:pre-wrap;word-break:break-all;";
+      const panel = document.getElementById("panel");
+      if (panel) panel.appendChild(box);
+    }
+    const t0 = Date.now();
+    const last = { k: "" };
+    window.__monTimer = setInterval(function () {
+      const L = window.__np && window.__np.lock;
+      if (!L) { box.textContent = "监听: 未找到 lock"; return; }
+      const il = L.L;
+      let tip;
+      const st = "t=" + ((Date.now() - t0) / 1000 | 0) + "s next=" + L.next + " linked=" + !!L.linked
+        + " peerReady=" + !!L.peerReady + " started=" + !!L.started
+        + " tp=" + (L.transports ? L.transports.length + "/" + (L._readyCount ? L._readyCount() : "?") : 0)
+        + " game=" + (il ? (il.started ? "ok" : il.phase) : "no-lock");
+      if (!L.linked) tip = "卡点: P2P未连通(ready/expect不足)";
+      else if (!L.peerReady) tip = "卡点: rd互报未完成(对端未宣告)";
+      else if (!il || !il.started) tip = "卡点: 游戏载入回调未触发";
+      else if (!L.started) tip = "卡点: _maybeStart差最后一环";
+      else if (L.next === 0) tip = "卡点: 闸门未开 own0=" + (L.own && L.own.has(0)) + " rem0=" + (L.rem && L.rem.has(0));
+      else tip = "✓ 锁步推进中";
+      const key = L.next + "|" + tip;
+      if (key !== last.k) {
+        box.textContent = st + "\n" + tip;
+        box.style.color = tip.charAt(0) === "✓" ? "#4caf50" : "#ff9800";
+        last.k = key;
+      }
+    }, 500);
+  })();  };
 })();
 
   /* ---------- 面板收起 / 展开 ---------- */
