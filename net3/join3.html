@@ -214,6 +214,7 @@
     peer.on("open", tryConnect);
     /* ---- 远程同乐：接收房主视频流 + 把本机输入转发给房主 ---- */
     peer.on("call", (call) => {
+      window.__npCall = call;   /* 暴露给 frz.js 取接收端统计 */
       call.on("stream", (remote) => {
         const v = document.getElementById("rv");
         v.srcObject = remote;

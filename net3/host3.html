@@ -350,6 +350,28 @@
           window.__npCall = call;
         } catch (err) { window.__diag && window.__diag.report("media", "视频流失败", String(err && err.message || err), "warn"); }
       });
+      /* 自愈入口：frz.js 检测到「游戏在跑但捕获/编码停住」时调用。
+       * 重建捕获流（同样手动推帧）并重新呼叫对端，不依赖对根因的猜测。 */
+      window.__npRecapture = () => {
+        try {
+          const w = iframe.contentWindow, d = iframe.contentDocument;
+          const cv = d && d.querySelector("canvas");
+          if (!cv || !cv.captureStream) return false;
+          try { if (mediaStream) mediaStream.getTracks().forEach((t2) => t2.stop()); } catch (e) {}
+          try { w.__npCapTrack = null; } catch (e) {}
+          let manual = null;
+          try {
+            const tmp = cv.captureStream(0);
+            const trk = tmp.getVideoTracks()[0];
+            if (trk && typeof trk.requestFrame === "function") manual = { stream: tmp, track: trk };
+            else { try { tmp.getTracks().forEach((x) => x.stop()); } catch (e) {} }
+          } catch (e) {}
+          mediaStream = manual ? manual.stream : cv.captureStream(30);
+          if (manual) { try { w.__npCapTrack = manual.track; } catch (e) {} }
+          window.__npCall = peer.call(conn.peer, mediaStream);
+          return true;
+        } catch (e) { return false; }
+      };
       conn.on("data", (data) => {
         // 好友回传的输入事件 → 注入 iframe（房主本地跑真游戏）
         if (!data || !data.evt) return;

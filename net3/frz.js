@@ -28,6 +28,29 @@
 
   var last = -1, stall = 0, loggedAt = -1;
   var encLast = -1, encStall = 0, encNow = -1;
+  /* 版本标记：写在角标最前面，一眼确认浏览器跑的是不是最新代码 */
+  var VERSION = "v4";
+  var recovAt = 0, recovCount = 0;
+  /* 好友侧：接收端统计，用来区分「网络没送到」和「送到了但解不出来」 */
+  var inFrames = -1, inDecoded = -1, inLost = -1, inJitter = -1;
+
+  function sampleInbound() {
+    try {
+      var call = window.__npCall;
+      var pc = call && call.peerConnection;
+      if (!pc || !pc.getStats) return;
+      pc.getStats().then(function (s) {
+        s.forEach(function (r) {
+          if (r.type === "inbound-rtp" && (r.kind === "video" || r.mediaType === "video")) {
+            if (typeof r.framesReceived === "number") inFrames = r.framesReceived;
+            if (typeof r.framesDecoded === "number") inDecoded = r.framesDecoded;
+            if (typeof r.packetsLost === "number") inLost = r.packetsLost;
+            if (typeof r.jitter === "number") inJitter = Math.round(r.jitter * 1000);
+          }
+        });
+      }).catch(function () {});
+    } catch (e) {}
+  }
 
   /* 房主侧：读 WebRTC 发送端实际编出的帧数。
    * framesEncoded 停滞而 __lock.frames 继续增长 = 游戏在跑但 canvas 捕获不再产帧
@@ -74,13 +97,15 @@
         extra: "rs=" + vid.readyState +
                " t=" + (vid.currentTime || 0).toFixed(2) +
                " dropped=" + (q ? q.droppedVideoFrames : "?") +
-               " vw=" + vid.videoWidth
+               " vw=" + vid.videoWidth +
+               " rx=" + inFrames + " dec=" + inDecoded +
+               " lost=" + inLost + " jit=" + inJitter
       };
     } catch (e) { return null; }
   }
 
   setInterval(function () {
-    if (isHost) sampleEncoded();
+    if (isHost) sampleEncoded(); else sampleInbound();
     var s = isHost ? sampleHost() : sampleGuest();
     var who = isHost ? "房主" : "好友";
 
@@ -92,7 +117,7 @@
 
     if (!s) {
       el.style.color = "#c9d1d9";
-      el.textContent = who + " · 等待数据…";
+      el.textContent = VERSION + " " + who + " · 等待数据…";
       last = -1; stall = 0;
       return;
     }
@@ -101,7 +126,7 @@
 
     if (stall >= 2) {
       el.style.color = "#ff5252";
-      el.textContent = who + " 冻结! 帧=" + s.k + " " + s.extra + " " + (stall + 1) + "s";
+      el.textContent = VERSION + " " + who + " 冻结! 帧=" + s.k + " " + s.extra + " " + (stall + 1) + "s";
       if (loggedAt !== s.k) {
         loggedAt = s.k;
         try {
@@ -113,11 +138,25 @@
       }
     } else {
       /* 游戏帧在涨、但编码帧不涨 → 视频链路单独卡住（最可能：标签页不可见/被遮挡，
-       * Chrome 暂停 canvas 合成捕获）。这是「好友看到定格、房主其实还在跑」的指纹。 */
+       * Chrome 暂停 canvas 捕获）。这是「好友看到定格、房主其实还在跑」的指纹。 */
       var capWarn = isHost && encStall >= 2 ? " ⚠cap停" + (encStall + 1) + "s" : "";
       el.style.color = capWarn ? "#ffa657" : "#39d353";
-      el.textContent = who + (isHost ? " 帧=" : " 视频帧=") + s.k + " · " + s.extra + capWarn;
+      el.textContent = VERSION + " " + who + (isHost ? " 帧=" : " 视频帧=") + s.k + " · " + s.extra + capWarn;
       loggedAt = -1;
+    }
+
+    /* 自愈：房主游戏还在跑、但捕获/编码停住 → 重建捕获流并重新呼叫（限频限次）。
+     * 不依赖对根因的猜测：只要是「上游不再产帧」，重连就能把画面接回来。 */
+    if (isHost && stall < 2 && encStall >= 3 && recovCount < 5) {
+      var now = Date.now();
+      if (now - recovAt > 10000 && typeof window.__npRecapture === "function") {
+        recovAt = now; recovCount++;
+        var ok = false;
+        try { ok = window.__npRecapture(); } catch (e) {}
+        try { console.log("[FRZ] recapture #" + recovCount + " -> " + ok); } catch (e) {}
+        el.textContent += " ↻重建" + recovCount;
+        encStall = 0;
+      }
     }
   }, 1000);
 })();
