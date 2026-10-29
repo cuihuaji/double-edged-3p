@@ -165,6 +165,78 @@
   }
   window.__stopTicker = stopTicker;
 
+  /* ============ ENTER_FRAME 监听器保活（B 路线根治补丁） ============
+   * 根因（已实测 + 反编译确认）：
+   *   FightingGameMain.update / Controller.spaceCheck 以 useWeakReference=true
+   *   注册 ENTER_FRAME。AwayFl 是 JS 运行时，真实 Flash 的弱引用监听器语义
+   *   在这里不成立——游戏推进到对象分配高峰（第二个怪刷出/关卡节点）时，
+   *   主循环监听器从派发单例的监听表里消失（被清/被回收），此后：
+   *   渲染循环照转、零异常、画面定格在最后一帧、输入全死。
+   * 修复：
+   *   1) hook addEventListener，备份所有 enterFrame 注册（无论弱/强引用）
+   *   2) 每帧检查派发单例的监听表：表空而备份非空 → 自动重新注册
+   *   3) 绝不主动恢复到菜单之外的错误状态——只补回曾存在过的监听器
+   * 该模块在 AVM 就绪后自动启动；nolock 与锁步模式都受益。 */
+  (function () {
+    var efBackup = [];          // {target, type, listener, useCapture, priority}
+    var EF = "enterFrame";
+    var armed = false, lastTableEmpty = false;
+
+    function snapshot(table) { return table && table.length ? table.length : 0; }
+
+    function tryInstall() {
+      var pl = window.AVMPlayerPoki;
+      if (!pl || !pl._avmHandler) return false;
+      var pg = pl._avmHandler._playerglobal;
+      var st = pg && pg._stage;
+      var as3 = st && st._stage;              // AS3 Stage 单例 = rF.getInstance()
+      if (!as3) return false;
+
+      // ---- 1) 备份所有 enterFrame 注册（hook AS3 Stage 单例的 addEventListener）
+      if (!as3.__efKeepAlive) {
+        as3.__efKeepAlive = true;
+        var oAdd = as3.addEventListener;
+        if (typeof oAdd === "function") {
+          as3.addEventListener = function (type, listener, useCapture, priority, useWeak) {
+            try {
+              if (String(type) === EF) {
+                efBackup.push({ listener: listener, capture: !!useCapture, priority: priority || 0 });
+                if (efBackup.length > 40) efBackup.shift();
+              }
+            } catch (e) {}
+            return oAdd.call(as3, type, listener, useCapture, priority, useWeak);
+          };
+        }
+      }
+
+      // ---- 2) 每帧巡检：监听表空 + 有备份 → 重新注册
+      var table = as3._listenerObjects;
+      var n = snapshot(table);
+      if (n === 0 && efBackup.length > 0 && !lastTableEmpty) {
+        lastTableEmpty = true;              // 只在"刚变空"的边沿触发一次
+        try { window.__efRescue = (window.__efRescue || 0) + 1; } catch (e) {}
+        efBackup.forEach(function (b) {
+          try { as3.addEventListener(EF, b.listener, b.capture, b.priority, false); } catch (e) {}
+        });
+      } else if (n > 0) {
+        lastTableEmpty = false;
+      }
+      return true;
+    }
+
+    // 等 AVM 就绪后武装（最长等 60s）
+    var tries = 0;
+    var arm = setInterval(function () {
+      tries++;
+      if (tryInstall()) {
+        armed = true;
+        clearInterval(arm);
+        try { window.__efArmed = true; } catch (e) {}
+      } else if (tries > 600) clearInterval(arm);
+    }, 100);
+    window.__efKeepAliveArmed = function () { return armed; };
+  })();
+
   /* ---- 输入注入 ---- */
   var KEYCODE = {
     ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40,
