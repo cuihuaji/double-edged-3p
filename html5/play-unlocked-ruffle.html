@@ -169,7 +169,7 @@
       try { t && t.dispatchEvent(ev); } catch (e) {}
     });
   }
-  function fireMouse(type, fx, fy) {
+  function fireMouse(type, fx, fy) { if (!isFinite(fx) || !isFinite(fy)) return;
     var c = window.__lock.canvas();
     if (!c) return;
     var r = c.getBoundingClientRect();

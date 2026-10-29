@@ -184,7 +184,7 @@
     return null;
   }
 
-  function fireMouse(type, fx, fy) {
+  function fireMouse(type, fx, fy) { if (!isFinite(fx) || !isFinite(fy)) return;
     var c = canvas();
     if (!c) return;
     var r = c.getBoundingClientRect();
