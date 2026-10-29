@@ -154,8 +154,21 @@
 
   function hostL() { return iframe.contentWindow && iframe.contentWindow.__lock; }
   function hostClick(fx, fy) {
-    const L = hostL();
-    if (L && L.applyEvents) L.applyEvents([["md", +fx.toFixed(4), +fy.toFixed(4)], ["mu", +fx.toFixed(4), +fy.toFixed(4)]]);
+    try {
+      const w = iframe.contentWindow, d = iframe.contentDocument;
+      const cv = d.querySelector("canvas");
+      if (!cv) return;
+      const r = cv.getBoundingClientRect();
+      const cx = r.left + r.width * fx, cy = r.top + r.height * fy;
+      const O = { clientX: cx, clientY: cy, button: 0, buttons: 1, bubbles: true, cancelable: true, composed: true, view: w, pointerId: 1, pointerType: "mouse", isPrimary: true };
+      // 与好友转发完全一致：真实 PointerEvent 直接打到 canvas（AwayFL 原生管线处理菜单命中）
+      cv.dispatchEvent(new w.PointerEvent("pointerdown", O));
+      cv.dispatchEvent(new w.MouseEvent("mousedown", O));
+      const o2 = Object.assign({}, O, { buttons: 0 });
+      cv.dispatchEvent(new w.PointerEvent("pointerup", o2));
+      cv.dispatchEvent(new w.MouseEvent("mouseup", o2));
+      cv.dispatchEvent(new w.MouseEvent("click", o2));
+    } catch (err) {}
   }
   function hostKey(down, code) {
     const L = hostL();
