@@ -328,6 +328,11 @@
     this.prevFull = full;
     try {
       if (evts && evts.length) this.L.applyEvents(evts);
+    } catch (err) {
+      // 事件回放失败不能拖死全房：跳过事件继续推帧（少一次点击 << 全房冻结）
+      this.diag("input", "第 " + f + " 帧事件回放失败，已跳过", (err && err.message) || String(err), "warn");
+    }
+    try {
       this.L.stepOnce();
     } catch (err) {
       this.diag("input", "推进第 " + f + " 帧时抛错", (err && err.message) || String(err), "err");

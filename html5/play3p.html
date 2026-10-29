@@ -204,6 +204,7 @@
       button: 0, buttons: (type === "pointerdown" || type === "mousedown") ? 1 : 0
     };
     var ev;
+    try {
     if (type.indexOf("pointer") === 0) {
       o.pointerId = 1; o.pointerType = "mouse"; o.isPrimary = true;
       ev = new PointerEvent(type, o);
@@ -212,6 +213,7 @@
     }
     ev.__np = true;
     (c.parentElement || c).dispatchEvent(ev);   // 派发到 container 本体（AwayFL 监听处）
+    } catch (e2) { try { L.replayErr = (L.replayErr || 0) + 1; } catch (e3) {} }
   }
 
   /* ---- 屏蔽原生输入：游戏只接受按帧注入的合成事件 ---- */
