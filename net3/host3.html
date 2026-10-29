@@ -215,16 +215,17 @@
   /* ---------- PeerJS：短房号 ---------- */
   function bindConn(conn) {
     const adapter = {
-      send: (o) => { try { conn.send(o); } catch (e) {} },
+      _q: [],
+      send: (o) => { if (conn.open) { try { conn.send(o); } catch (e) {} } else adapter._q.push(o); },
       ready: conn.open
     };
     lock.attachTransport(adapter);
-    conn.on("open", () => adapter.onopen && adapter.onopen());
+    conn.on("open", () => { adapter.ready = true; const q = adapter._q.splice(0); q.forEach((o) => { try { conn.send(o); } catch (e) {} }); adapter.onopen && adapter.onopen(); });
     conn.on("data", (d) => adapter.onmessage && adapter.onmessage(d));
-    conn.on("close", () => adapter.onclose && adapter.onclose());
+    conn.on("close", () => { adapter.ready = false; adapter.onclose && adapter.onclose(); });
     conn.on("error", (e) => window.__diag && window.__diag.report("dc", "PeerJS 连接出错",
       String((e && e.type) || e), "err"));
-    if (conn.open) setTimeout(() => adapter.onopen && adapter.onopen(), 0);
+    if (conn.open) setTimeout(() => { adapter.ready = true; adapter.onopen && adapter.onopen(); }, 0);
   }
 
   let peer = null;
