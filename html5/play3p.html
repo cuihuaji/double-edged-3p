@@ -187,6 +187,9 @@
    *   addEventListener/removeEventListener，按对象备份 enterFrame 注册；
    *   巡检发现某对象"曾有 enterFrame 监听器、现在没了"→ 自动恢复。 */
   (function () {
+    /* 停用（见上）：该假设已被实测推翻（游戏不往 stage 单例注册 enterFrame，rescue 从未触发）；
+     * 且在生产里重新注册已被移除的监听器会复活幽灵更新，风险大于收益。保留代码作历史记录。 */
+    return;
     var EF = "enterFrame";
     var armed = false;
     var backup = new Map();   // target -> [{listener, capture, priority}]
