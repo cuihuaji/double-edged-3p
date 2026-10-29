@@ -129,13 +129,21 @@
     }
   };
 
-  iframe.src = "../html5/play3p.html?seed=" + SEED + "&cb=" + Date.now();
+  iframe.src = "../html5/play3p.html?seed=" + SEED + "&cb=" + Date.now() + "&nolock=1";   // 远程同乐：不锁步
 
+  const NOLOCK = new URLSearchParams(location.search).has("nolock");   // 远程同乐
   const lock = new Lock({
     side: "p1", seed: SEED, frame: iframe, expectPeers: (parseInt(new URLSearchParams(location.search).get("p") || "2", 10) || 2),
     log: (m) => console.log("[lock]", m),
     diag: (c, m, d, s) => window.__diag && window.__diag.report(c, m, d, s)
-  });
+  });  /* 远程同乐（nolock）：桩掉锁步起跑与闸门——好友不跑游戏副本，
+   * 任何锁步等待都会永久冻结。play3p 保持 ready 自转自由跑。 */
+  if (NOLOCK) {
+    lock._maybeStart = function () {};
+    lock._startPacing = function () {};
+    lock._send = function () {};
+    lock.attachTransport = function () {};
+  }
 
   /* 让 iframe 显示尺寸跟随窗口，但内部视口恒为 880x640 */
   function fitIframe() {

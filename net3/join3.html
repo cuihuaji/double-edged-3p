@@ -127,7 +127,7 @@
   /* 用种子启动游戏 */
   function startGame(seed) {
     if (lock) { try { lock.stop(); } catch (e) {} }
-    iframe.src = "../html5/play3p.html?seed=" + (seed >>> 0) + "&cb=" + Date.now() + "&cb=" + Date.now();
+    iframe.src = "../html5/play3p.html?seed=" + (seed >>> 0) + "&cb=" + Date.now() + "&nolock=1" + "&cb=" + Date.now();
     lock = new Lock({
       side: "p2", seed: seed >>> 0, frame: iframe,
       log: (m) => console.log("[lock]", m),
