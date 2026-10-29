@@ -31,7 +31,7 @@
   /* 编码器细分指标：区分「捕获没产帧」和「产了但被带宽压住不编」 */
   var encSent = -1, encBytes = -1, encQlr = "?", encRes = "?";
   /* 版本标记：写在角标最前面，一眼确认浏览器跑的是不是最新代码 */
-  var VERSION = "v4";
+  var VERSION = "v5";
   var recovAt = 0, recovCount = 0;
   /* 好友侧：接收端统计，用来区分「网络没送到」和「送到了但解不出来」 */
   var inFrames = -1, inDecoded = -1, inLost = -1, inJitter = -1;
@@ -89,6 +89,7 @@
                " rafErr=" + ((f.__rafErrs && f.__rafErrs.length) || 0) +
                " cap=" + encNow + " sent=" + encSent + " B=" + encBytes +
                " qlr=" + encQlr + " res=" + encRes +
+               " re=" + (typeof window.__npRecapture === "function" ? 1 : 0) +
                " vis=" + document.visibilityState
       };
     } catch (e) { return null; }
