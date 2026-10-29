@@ -132,7 +132,7 @@
   iframe.src = "../html5/play3p.html?seed=" + SEED;
 
   const lock = new Lock({
-    side: "p1", seed: SEED, frame: iframe, expectPeers: 2,
+    side: "p1", seed: SEED, frame: iframe, expectPeers: (parseInt(new URLSearchParams(location.search).get("p") || "2", 10) || 2),
     log: (m) => console.log("[lock]", m),
     diag: (c, m, d, s) => window.__diag && window.__diag.report(c, m, d, s)
   });
@@ -247,7 +247,7 @@
 
     peer.on("open", () => {
       $("room").textContent = roomId;
-      $("room-hint").textContent = "点一下可复制。两个好友都在加入页输入这串（一人用 WASD，一人用 IJKL）。";
+      $("room-hint").textContent = (lock.expectPeers === 1 ? "已复制。双人房：1 位好友加入即开局（WASD）。" : "已复制，发给好友即可。两个好友都加入后开局。");
       navigator.clipboard.writeText(roomId).catch(() => {});
     });
     peer.on("connection", bindConn);
