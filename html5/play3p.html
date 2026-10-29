@@ -197,6 +197,7 @@
     var c = canvas();
     if (!c) return;
     var r = c.getBoundingClientRect();
+    var dpr = (c.ownerDocument.defaultView && c.ownerDocument.defaultView.devicePixelRatio) || 1;
     var o = {
       clientX: Math.round(r.left + r.width * fx * dpr),
       clientY: Math.round(r.top + r.height * fy * dpr),
