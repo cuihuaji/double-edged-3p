@@ -324,7 +324,19 @@
             const w = iframe.contentWindow, d = iframe.contentDocument;
             const cv = d && d.querySelector("canvas");
             if (!cv || !cv.captureStream) throw new Error("captureStream 不可用");
-            mediaStream = cv.captureStream(30);
+            let manual = null;
+            try {
+              const tmp = cv.captureStream(0);
+              const trk = tmp.getVideoTracks()[0];
+              if (trk && typeof trk.requestFrame === "function") manual = { stream: tmp, track: trk };
+              else { try { tmp.getTracks().forEach((x) => x.stop()); } catch (e) {} }
+            } catch (e) {}
+            if (manual) {
+              mediaStream = manual.stream;
+              try { w.__npCapTrack = manual.track; } catch (e) {}
+            } else {
+              mediaStream = cv.captureStream(30);
+            }
             // 音频：AwayFL 用 WebAudio，桥接到流（拿不到就只传画面）
             try {
               const AC = w.AudioContext || w.webkitAudioContext;

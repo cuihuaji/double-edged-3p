@@ -119,6 +119,17 @@
     }
     L.qLen = ran;               // 这一步排空了几个内部回调（正常应为 1）
     if (L.started) L.frames++;
+    /* 远程同乐推帧（与 captureStream(0) 配对）：每推进一帧就显式请求一次画面帧。
+     * 不能靠 captureStream(30) 的自动出帧——那条路依赖浏览器合成，
+     * 标签页不可见/被遮挡时 Chrome 会暂停 canvas 合成捕获，
+     * 结果就是好友端画面定格、房主端却还在跑（已实测确认的症状）。
+     * 本驱动走 Worker 定时器，不受标签页节流影响，因此显式推帧能持续。 */
+    if (L.started) {
+      try {
+        var __ct = window.__npCapTrack;
+        if (__ct && __ct.requestFrame) __ct.requestFrame();
+      } catch (e) {}
+    }
     /* 自愈：队列空了（某帧回调抛错前没重新注册 RAF）但还在自转 → 用上一帧回调兜底续帧，
      * 否则游戏循环永久死亡 = 战斗中冻屏。只在非锁步（self-drive）模式兜底。 */
     if (ran === 0 && lastCb && L.phase !== "running") {
@@ -165,62 +176,83 @@
   }
   window.__stopTicker = stopTicker;
 
-  /* ============ ENTER_FRAME 监听器保活（B 路线根治补丁） ============
+  /* ============ ENTER_FRAME 监听器保活（B 路线根治补丁 v2） ============
    * 根因（已实测 + 反编译确认）：
    *   FightingGameMain.update / Controller.spaceCheck 以 useWeakReference=true
-   *   注册 ENTER_FRAME。AwayFl 是 JS 运行时，真实 Flash 的弱引用监听器语义
-   *   在这里不成立——游戏推进到对象分配高峰（第二个怪刷出/关卡节点）时，
-   *   主循环监听器从派发单例的监听表里消失（被清/被回收），此后：
-   *   渲染循环照转、零异常、画面定格在最后一帧、输入全死。
-   * 修复：
-   *   1) hook addEventListener，备份所有 enterFrame 注册（无论弱/强引用）
-   *   2) 每帧检查派发单例的监听表：表空而备份非空 → 自动重新注册
-   *   3) 绝不主动恢复到菜单之外的错误状态——只补回曾存在过的监听器
-   * 该模块在 AVM 就绪后自动启动；nolock 与锁步模式都受益。 */
+   *   把 ENTER_FRAME 注册到【对象级】(root/levelContainer)，AwayFl 的 JS 运行时
+   *   在对象分配高峰（第二个怪/关卡节点）时丢失这些监听器——之后渲染循环照转、
+   *   零异常、画面定格最后一帧、输入全死（实测确认）。
+   * v2 修正：监听器在对象级而非 stage 单例（实测 stage 单例表恒为空），
+   *   因此改为【原型级拦截】——hook 所有 EventDispatcher 共享的
+   *   addEventListener/removeEventListener，按对象备份 enterFrame 注册；
+   *   巡检发现某对象"曾有 enterFrame 监听器、现在没了"→ 自动恢复。 */
   (function () {
-    var efBackup = [];          // {target, type, listener, useCapture, priority}
     var EF = "enterFrame";
-    var armed = false, lastTableEmpty = false;
-
-    function snapshot(table) { return table && table.length ? table.length : 0; }
+    var armed = false;
+    var backup = new Map();   // target -> [{listener, capture, priority}]
 
     function tryInstall() {
       var pl = window.AVMPlayerPoki;
       if (!pl || !pl._avmHandler) return false;
       var pg = pl._avmHandler._playerglobal;
       var st = pg && pg._stage;
-      var as3 = st && st._stage;              // AS3 Stage 单例 = rF.getInstance()
-      if (!as3) return false;
+      var as3 = st && st._stage;
+      if (!as3 || !as3.addEventListener || !as3.__proto__) return false;
 
-      // ---- 1) 备份所有 enterFrame 注册（hook AS3 Stage 单例的 addEventListener）
-      if (!as3.__efKeepAlive) {
-        as3.__efKeepAlive = true;
-        var oAdd = as3.addEventListener;
-        if (typeof oAdd === "function") {
-          as3.addEventListener = function (type, listener, useCapture, priority, useWeak) {
-            try {
-              if (String(type) === EF) {
-                efBackup.push({ listener: listener, capture: !!useCapture, priority: priority || 0 });
-                if (efBackup.length > 40) efBackup.shift();
-              }
-            } catch (e) {}
-            return oAdd.call(as3, type, listener, useCapture, priority, useWeak);
-          };
-        }
-      }
+      // EventDispatcher 原型（AS3 侧所有可派发对象共享）
+      var proto = Object.getPrototypeOf(as3);
+      if (!proto || !proto.addEventListener || proto.__efKeepAliveV2) return !proto.__efKeepAliveV2 ? false : true;
+      if (proto.__efKeepAliveV2) return true;
+      proto.__efKeepAliveV2 = true;
 
-      // ---- 2) 每帧巡检：监听表空 + 有备份 → 重新注册
-      var table = as3._listenerObjects;
-      var n = snapshot(table);
-      if (n === 0 && efBackup.length > 0 && !lastTableEmpty) {
-        lastTableEmpty = true;              // 只在"刚变空"的边沿触发一次
-        try { window.__efRescue = (window.__efRescue || 0) + 1; } catch (e) {}
-        efBackup.forEach(function (b) {
-          try { as3.addEventListener(EF, b.listener, b.capture, b.priority, false); } catch (e) {}
-        });
-      } else if (n > 0) {
-        lastTableEmpty = false;
-      }
+      var oAdd = proto.addEventListener;
+      var oRem = proto.removeEventListener;
+
+      proto.addEventListener = function (type, listener, useCapture, priority, useWeak) {
+        try {
+          if (String(type) === EF && typeof listener === "function") {
+            var arr = backup.get(this) || [];
+            if (!arr.some(function (b) { return b.listener === listener; })) {
+              arr.push({ listener: listener, capture: !!useCapture, priority: priority || 0 });
+              backup.set(this, arr);
+            }
+          }
+        } catch (e) {}
+        return oAdd.call(this, type, listener, useCapture, priority, useWeak);
+      };
+
+      proto.removeEventListener = function (type, listener, useCapture) {
+        try {
+          if (String(type) === EF) {
+            var arr = backup.get(this);
+            if (arr) {
+              // 记录"被移除"——巡检器据此判断是否恢复
+              arr.forEach(function (b) { if (b.listener === listener) b.removed = true; });
+            }
+          }
+        } catch (e) {}
+        return oRem.call(this, type, listener, useCapture);
+      };
+
+      // 巡检：对每个有备份的对象，若其监听表里已无 enterFrame 注册 → 恢复
+      setInterval(function () {
+        try {
+          backup.forEach(function (arr, target) {
+            if (!arr.length) return;
+            var los = target._listenerObjects;
+            if (!los) return;
+            var hasEF = los.some(function (lo) { return String(lo.type) === EF; });
+            if (!hasEF) {
+              // 曾注册、现在没了 → 全部恢复（强引用）
+              window.__efRescue = (window.__efRescue || 0) + 1;
+              arr.forEach(function (b) {
+                try { oAdd.call(target, EF, b.listener, b.capture, b.priority, false); } catch (e) {}
+              });
+            }
+          });
+        } catch (e) {}
+      }, 500);
+
       return true;
     }
 
@@ -231,7 +263,7 @@
       if (tryInstall()) {
         armed = true;
         clearInterval(arm);
-        try { window.__efArmed = true; } catch (e) {}
+        try { window.__efArmed = true; window.__efBackupSize = function(){ return backup.size; }; } catch (e) {}
       } else if (tries > 600) clearInterval(arm);
     }, 100);
     window.__efKeepAliveArmed = function () { return armed; };
