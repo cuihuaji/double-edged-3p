@@ -133,8 +133,10 @@
   Lock.prototype._mouse = function (type, e) {
     // 只允许房主操作菜单，避免两端各点各的造成分歧
     if (this.side !== "p1") return;
-    const r = this.frame.getBoundingClientRect();
-    if (!r.width || !r.height) return;   // iframe 未布局：坐标必为 NaN，丢弃（否则毒帧卡死全房）
+    var cv = null;
+    try { cv = this.frame.contentDocument && this.frame.contentDocument.querySelector("canvas"); } catch (e) {}
+    const r = (cv || this.frame).getBoundingClientRect();   // 坐标基准与 play3p fireMouse 一致（canvas），否则两端错位
+    if (!r.width || !r.height) return;   // 未布局：坐标必为 NaN，丢弃（否则毒帧卡死全房）
     const fx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
     const fy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
     if (!isFinite(fx) || !isFinite(fy)) return;
