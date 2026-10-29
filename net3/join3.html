@@ -68,7 +68,7 @@
 </style>
 </head>
 <body>
-<div id="wrap"><iframe id="game" allow="autoplay; fullscreen"></iframe></div>
+<div id="wrap"><iframe id="game" allow="autoplay; fullscreen"></iframe><video id="rv" autoplay playsinline style="display:none;position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:5"></video></div>
 
 <div id="panel">
   <h1>三人联机 · 好友</h1>
@@ -211,6 +211,7 @@
         const v = document.getElementById("rv");
         v.srcObject = remote;
         v.style.display = "block";
+        try { document.getElementById("game").src = "about:blank"; } catch (e) {}   // 远程同乐：好友本地不跑游戏副本
         v.play().catch(() => {});
         v.onclick = () => v.play();
         const hint = document.getElementById("room-hint");
