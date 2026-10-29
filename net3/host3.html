@@ -106,7 +106,7 @@
 <script src="peerjs.min.js"></script>
 <script src="diag.js"></script>
 <script src="subs.js"></script>
-<script src="lock.js?v=7"></script>
+<script src="lock.js?v=8"></script>
 <script>
 (function () {
   "use strict";
@@ -145,6 +145,45 @@
     lock._send = function () {};
     lock.attachTransport = function () {};
   }
+
+  /* ===== 房主本地输入：直接打 iframe.contentWindow.__lock（与好友转发同一条已验证通道） =====
+   * 不再依赖 lock.js 的 self.L（NOLOCK 模式下不稳）。__lock 是 play3p 顶层暴露的 L 对象。
+   * play3p.applyEvents 接受: ["md"/"mu", fx, fy] 鼠标；["d"/"u", code] 键盘。 */
+  const P1KEYS = ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","KeyN","KeyM"];
+  const P2KEYS = ["KeyW","KeyA","KeyS","KeyD","KeyG","KeyH"];
+
+  function hostL() { return iframe.contentWindow && iframe.contentWindow.__lock; }
+  function hostClick(fx, fy) {
+    const L = hostL();
+    if (L && L.applyEvents) L.applyEvents([["md", +fx.toFixed(4), +fy.toFixed(4)], ["mu", +fx.toFixed(4), +fy.toFixed(4)]]);
+  }
+  function hostKey(down, code) {
+    const L = hostL();
+    if (L && L.applyEvents) L.applyEvents([[down ? "d" : "u", code]]);
+  }
+
+  // 鼠标：clicklayer 接管。坐标按 canvas 归一（与 fireMouse 同基准）
+  const layer = document.getElementById("clicklayer");
+  if (layer) {
+    layer.addEventListener("pointerdown", (e) => {
+      try {
+        const w = iframe.contentWindow, d = iframe.contentDocument;
+        const cv = d.querySelector("canvas");
+        if (!cv) return;
+        const r = cv.getBoundingClientRect();
+        const fx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+        const fy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+        hostClick(fx, fy);
+      } catch (err) {}
+    }, false);
+  }
+  // 键盘：捕获本页面键码，P1 键直注游戏
+  window.addEventListener("keydown", (e) => {
+    if (P1KEYS.indexOf(e.code) >= 0) { e.preventDefault(); hostKey(true, e.code); }
+  }, true);
+  window.addEventListener("keyup", (e) => {
+    if (P1KEYS.indexOf(e.code) >= 0) { e.preventDefault(); hostKey(false, e.code); }
+  }, true);
 
   /* 让 iframe 显示尺寸跟随窗口，但内部视口恒为 880x640 */
   function fitIframe() {
