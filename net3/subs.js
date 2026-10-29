@@ -180,7 +180,14 @@ window.DE_UI = {
   "HELP ME!": "救命啊！"
 };
 
-/* 界面词索引：键统一归一化，否则 STAGE COMPLETE! 这类带标点的查不到 */`nwindow.DE_UI_N = (function () {`n  var m = {};`n  for (var k in window.DE_UI) m[window.DE_NORM(k)] = window.DE_UI[k];`n  return m;`n})();`n`n/* 一行字幕：优先台词，其次界面词；纯数字忽略 */
+/* 界面词索引：键统一归一化，否则 STAGE COMPLETE! 这类带标点的查不到 */
+window.DE_UI_N = (function () {
+  var m = {};
+  for (var k in window.DE_UI) m[window.DE_NORM(k)] = window.DE_UI[k];
+  return m;
+})();
+
+/* 一行字幕：优先台词，其次界面词；纯数字忽略 */
 window.DE_TRANSLATE = function (texts) {
   var out = [];
   for (var i = 0; i < texts.length; i++) {
