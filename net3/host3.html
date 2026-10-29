@@ -306,6 +306,8 @@
     get peerOpen() { return !!(peer && peer.open); },
     createOffer: () => lock.createOffer().then((c) => "O." + SEED.toString(36) + "." + c),
     acceptAnswer: (v) => lock.acceptAnswer(v.replace(/^A\.[^.]*\./, ""))
+  };
+})();
 
   /* ---------- 内置监听器：面板底部实时显示锁步卡点 ---------- */
   (function mon() {
@@ -341,7 +343,6 @@
         last.k = key;
       }
     }, 500);
-  })();  };
 })();
 
   /* ---------- 面板收起 / 展开 ---------- */
