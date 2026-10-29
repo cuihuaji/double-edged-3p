@@ -129,7 +129,7 @@
     }
   };
 
-  iframe.src = "../html5/play3p.html?seed=" + SEED;
+  iframe.src = "../html5/play3p.html?seed=" + SEED + "&cb=" + Date.now();
 
   const lock = new Lock({
     side: "p1", seed: SEED, frame: iframe, expectPeers: (parseInt(new URLSearchParams(location.search).get("p") || "2", 10) || 2),
