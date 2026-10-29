@@ -78,8 +78,8 @@
   L.rndAt = rndAt;
 
   /* ---- 手动 RAF 队列 ---- */
-  var q = [], seq = 0;
-  window.requestAnimationFrame = function (cb) { q.push([++seq, cb]); return seq; };
+  var q = [], seq = 0, lastCb = null;
+  window.requestAnimationFrame = function (cb) { lastCb = cb; q.push([++seq, cb]); return seq; };
   window.cancelAnimationFrame = function (id) {
     for (var i = 0; i < q.length; i++) if (q[i][0] === id) q[i][1] = null;
   };
@@ -115,10 +115,15 @@
     for (var i = 0; i < cur.length; i++) {
       if (!cur[i][1]) continue;
       ran++;
-      try { cur[i][1](L.vnow); } catch (e) {}
+      try { cur[i][1](L.vnow); } catch (e) { window.__rafErrs && window.__rafErrs.push(String(e)); }
     }
     L.qLen = ran;               // 这一步排空了几个内部回调（正常应为 1）
     if (L.started) L.frames++;
+    /* 自愈：队列空了（某帧回调抛错前没重新注册 RAF）但还在自转 → 用上一帧回调兜底续帧，
+     * 否则游戏循环永久死亡 = 战斗中冻屏。只在非锁步（self-drive）模式兜底。 */
+    if (ran === 0 && lastCb && L.phase !== "running") {
+      q.push([++seq, lastCb]);
+    }
     return ran;
   }
 
@@ -309,6 +314,7 @@
    * 游戏永远用自转 Worker 跑（好友端是视频流，无需确定性）。 ---- */
   if (new URLSearchParams(location.search).has("nolock")) {
     window.__pauseAuto = function () {};
+  window.__rafErrs = [];
   }
 
   /* ---- 静音音频保活：豁免 Chrome 后台节流 ----
