@@ -549,31 +549,86 @@
 })();
 </script>
 <script>
-/* ── 帧广播异常隔离（实测根因修复）─────────────────────────────────
- * 根因：某个敌人进入不一致状态后，CPUCharacterFinal.doAIMovement 每帧抛
- * TypeError（读 undefined 的 Symbol(AX class marker)）。实测该异常从 AVM 的
- * enterFrame 分发里逃出去，AVM tick 内"分发之后"的渲染步骤被整段跳过：
- *   冻结时 WebGL 绘制 0 次/2 秒，健康时 ~1.3 万次/2 秒；
- *   异常前按住方向键 0.9 秒画面变化 2.14%，异常后 1.6 秒仅 0.02%。
- * 处理：把分发入口包起来，单个监听器的异常不再中断整个 tick。
- * 实测结果：崩溃后打补丁，绘制从 0 恢复 14579 次/2 秒，按键重新产生位移。
- * 代价：出问题的那个敌人自身不再更新（它会站着不动），其余一切照常。
+/* ── 根因修复：numPlayers 与实际玩家数不一致 ─────────────────────────
+ * 实测（三人联机移植版）：在 PLAYER SELECT 选「2 PLAYERS」，进关后 numPlayers
+ * 仍是 3，players 数组长度 3 但只填了 2 个槽位（只有 healthBar / healthBarP2）。
+ * 于是 CPUCharacterFinal.as:420
+ *      attackPlayer = Math.floor(Math.random() * numPlayers) + 1;   // 可能 = 3
+ * 让 doAIMovement 去读 players[2] === undefined；AwayFl 读属性先取
+ * Symbol(AX class marker)，所以每帧抛：
+ *      TypeError: Cannot read properties of undefined (reading 'Symbol(AX class marker)')
+ * 该异常从 AVM 的 enterFrame 分发里逃出去，AVM tick 内"分发之后"的渲染整段被跳过
+ * → 画面永久定格（实测冻结时 WebGL 绘制 0 次/2 秒；健康时约 1.3 万次/2 秒）。
+ *
+ * 三层修复：
+ *  1) 把 numPlayers 校正为真实玩家数（= 存在的玩家血条数，只降不升，避免影响单人）——
+ *     异常从源头消失；
+ *  2) 每 0.5 秒把所有敌人的 attackPlayer 夹回 [1, numPlayers] —— 兜底；
+ *  3) 把 enterFrame 分发入口包 try/catch —— 最后一道防线：任何监听器异常都不再
+ *     中断整个 tick，渲染永远不会被打断。
+ * 实测：numPlayers 由 3 校正为 2 后，连续进攻 20 秒异常 0 次（此前约 30 次/秒），
+ *       敌人/玩家/血条/渲染全部正常，无需牺牲任何敌人。
  */
 (function () {
-  var n = 0, installed = 0;
-  function install() {
+  var contained = 0, installed = 0, npFixed = 0;
+
+  function sweep() {
     var A = window.AVMPlayerPoki;
     if (!A || !A._avmHandler) return;
     var pg = A._avmHandler._playerglobal;
-    var st = pg && pg._stage;
+    var root = pg && pg._stage && pg._stage._stage && pg._stage._stage.getChildAt(0);
+    if (!root) return;
+
+    var game = null, baddies = [], seen = [];
+    (function walk(o, d) {
+      if (!o || d > 8) return;
+      if (seen.indexOf(o) >= 0) return;
+      seen.push(o);
+      var ns; try { ns = Object.getOwnPropertyNames(o); } catch (e) { return; }
+      if (!game && ns.indexOf("$BgtheGame") >= 0) { try { game = o.$BgtheGame; } catch (e) {} }
+      if (ns.indexOf("$BgattackPlayer") >= 0 && ns.indexOf("$Bgalive") >= 0) baddies.push(o);
+      var n = 0; try { n = o.numChildren || 0; } catch (e) {}
+      for (var i = 0; i < n; i++) { var c = null; try { c = o.getChildAt(i); } catch (e) {} if (c) walk(c, d + 1); }
+    })(root, 0);
+
+    /* 1) 真实玩家数 = 存在的玩家血条数；只降不升 */
+    var bars = 0;
+    ["healthBar", "healthBarP2", "healthBarP3", "healthBarP4"].forEach(function (n) {
+      var v = null; try { v = root["$Bg" + n] || root[n]; } catch (e) {}
+      if (v) bars++;
+    });
+    if (game && bars >= 2) {
+      var np = 0; try { np = game.$BgnumPlayers; } catch (e) {}
+      if (typeof np === "number" && np > bars) {
+        try { game.$BgnumPlayers = bars; npFixed++; window.__npNumPlayers = bars; } catch (e) {}
+      }
+    }
+
+    /* 2) attackPlayer 夹回 [1, numPlayers] */
+    var lim = 2;
+    if (game) { try { lim = game.$BgnumPlayers || 2; } catch (e) {} }
+    for (var b = 0; b < baddies.length; b++) {
+      var ap = null; try { ap = baddies[b].$BgattackPlayer; } catch (e) { continue; }
+      if (typeof ap === "number" && (ap < 1 || ap > lim)) {
+        try { baddies[b].$BgattackPlayer = 1; window.__npClamped = (window.__npClamped || 0) + 1; } catch (e) {}
+      }
+    }
+  }
+
+  /* 3) 分发入口隔离 */
+  function installGuard() {
+    var A = window.AVMPlayerPoki;
+    if (!A || !A._avmHandler) return;
+    var pg2 = A._avmHandler._playerglobal;
+    var st = pg2 && pg2._stage;
     if (!st) return;
     var orig = st.dispatchStaticBroadCastEvent;
     if (typeof orig !== "function" || orig.__npGuarded) return;
     var guarded = function (t) {
       try { return orig.call(this, t); }
       catch (e) {
-        n++;
-        window.__npContained = n;
+        contained++;
+        window.__npContained = contained;
         try {
           var log = window.__npContainedLog || (window.__npContainedLog = []);
           if (log.length < 20) log.push((e && e.stack) ? String(e.stack).slice(0, 800) : String(e));
@@ -586,10 +641,12 @@
     st.dispatchStaticBroadCastEvent = guarded;
     installed++;
   }
-  window.__npGuardStatus = function () { return { installed: installed, contained: n }; };
-  install();
-  setInterval(install, 500);
-})();
-</script>
-</body>
+
+  window.__npGuardStatus = function () {
+    return { installed: installed, contained: contained, npFixed: npFixed, np: window.__npNumPlayers };
+  };
+
+  installGuard(); sweep();
+  setInterval(function () { installGuard(); sweep(); }, 500);
+})();</body>
 </html>

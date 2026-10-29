@@ -31,7 +31,7 @@
   /* 编码器细分指标：区分「捕获没产帧」和「产了但被带宽压住不编」 */
   var encSent = -1, encBytes = -1, encQlr = "?", encRes = "?";
   /* 版本标记：写在角标最前面，一眼确认浏览器跑的是不是最新代码 */
-  var VERSION = "v6";
+  var VERSION = "v7";
   var recovAt = 0, recovCount = 0;
   /* 自愈已停用：实测它会反复重建呼叫，导致好友端 video 元素 srcObject 被反复替换、
    * play() 被打断、rs 一直是 0（画面彻底接不上）。在根因未明前不再自动重连。 */
@@ -91,6 +91,7 @@
         extra: "phase=" + f.__lock.phase + " q=" + f.__lock.qLen +
                " rafErr=" + ((f.__rafErrs && f.__rafErrs.length) || 0) +
             " cc=" + (f.__npContained || 0) +
+            " np=" + (f.__npNumPlayers || 0) +
                " cap=" + encNow + " sent=" + encSent + " B=" + encBytes +
                " qlr=" + encQlr + " res=" + encRes +
                " re=" + (typeof window.__npRecapture === "function" ? 1 : 0) +
