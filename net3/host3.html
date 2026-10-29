@@ -301,8 +301,54 @@
     return t;
   }
 
-  function openRoom() {
-    roomId = "de" + SEED.toString(36) + "-" + salt4();
+  /* ---- 画布捕获：等画布 + 精确报错 ----
+   * 之前是「连接一来就立刻 querySelector('canvas')」，好友如果加得早（游戏还在
+   * 加载），画布还不存在，就直接报 captureStream 不可用，看起来像浏览器不支持，
+   * 其实是时序问题。这里改成：等画布出现（默认 15 秒），并且把失败原因分成
+   * 「没有画布」和「浏览器没有这个 API」两种，各自给明确提示。 */
+  async function waitCanvas(ms) {
+    const t0 = Date.now();
+    for (;;) {
+      let cv = null;
+      try {
+        const d = iframe && iframe.contentDocument;
+        cv = d && d.querySelector("canvas");
+      } catch (e) {}
+      if (cv) return cv;
+      if (Date.now() - t0 >= ms) return null;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  async function captureGame(ms) {
+    const cv = await waitCanvas(ms || 15000);
+    if (!cv) throw new Error("等不到游戏画布（游戏还没启动完）。等画面出来后再让好友加入");
+    if (typeof cv.captureStream !== "function") {
+      let ua = "未知内核";
+      try { ua = (navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/) || ["未知内核"])[0]; } catch (e) {}
+      throw new Error("这个浏览器不支持 canvas.captureStream（" + ua + "），请用 Chrome 或 Edge 打开房主页");
+    }
+    let manual = null;
+    try {
+      const tmp = cv.captureStream(0);
+      const trk = tmp.getVideoTracks()[0];
+      if (trk && typeof trk.requestFrame === "function") manual = { stream: tmp, track: trk };
+      else { try { tmp.getTracks().forEach((x) => x.stop()); } catch (e) {} }
+    } catch (e) {}
+    const stream = manual ? manual.stream : cv.captureStream(30);
+    return { stream, track: manual ? manual.track : null, manual: !!manual };
+  }
+
+  window.__npTestCapture = async (ms) => {
+    try {
+      const g = await captureGame(ms || 8000);
+      const tr = g.stream.getVideoTracks()[0];
+      const st = tr && tr.getSettings ? tr.getSettings() : {};
+      return { ok: true, manual: g.manual, videoTracks: g.stream.getVideoTracks().length, w: st.width, h: st.height };
+    } catch (e) { return { ok: false, err: String(e && e.message || e) }; }
+  };
+
+  function openRoom() {    roomId = "de" + SEED.toString(36) + "-" + salt4();
     $("room").textContent = "连接信令…";
     try { if (peer) peer.destroy(); } catch (e) {}
     peer = new Peer(roomId, PEER_OPTS);
@@ -321,24 +367,13 @@
       conn.on("open", async () => {
         try {
           if (!mediaStream) {
-            const w = iframe.contentWindow, d = iframe.contentDocument;
-            const cv = d && d.querySelector("canvas");
-            if (!cv || !cv.captureStream) throw new Error("captureStream 不可用");
-            let manual = null;
-            try {
-              const tmp = cv.captureStream(0);
-              const trk = tmp.getVideoTracks()[0];
-              if (trk && typeof trk.requestFrame === "function") manual = { stream: tmp, track: trk };
-              else { try { tmp.getTracks().forEach((x) => x.stop()); } catch (e) {} }
-            } catch (e) {}
-            if (manual) {
-              mediaStream = manual.stream;
-              try { w.__npCapTrack = manual.track; } catch (e) {}
-            } else {
-              mediaStream = cv.captureStream(30);
-            }
+            const got = await captureGame(15000);
+            mediaStream = got.stream;
+            try { if (got.track && iframe.contentWindow) iframe.contentWindow.__npCapTrack = got.track; } catch (e) {}
+            try { window.__npManualCapture = got.manual; } catch (e) {}
             // 音频：AwayFL 用 WebAudio，桥接到流（拿不到就只传画面）
             try {
+              const w = iframe.contentWindow;
               const AC = w.AudioContext || w.webkitAudioContext;
               if (AC && !w.__npAudioDst) {
                 w.__npAudioDst = new AC().createMediaStreamDestination();
@@ -368,22 +403,12 @@
       });
       /* 自愈入口：frz.js 检测到「游戏在跑但捕获/编码停住」时调用。
        * 重建捕获流（同样手动推帧）并重新呼叫对端，不依赖对根因的猜测。 */
-      window.__npRecapture = () => {
+      window.__npRecapture = async () => {
         try {
-          const w = iframe.contentWindow, d = iframe.contentDocument;
-          const cv = d && d.querySelector("canvas");
-          if (!cv || !cv.captureStream) return false;
+          const got = await captureGame(3000);
           try { if (mediaStream) mediaStream.getTracks().forEach((t2) => t2.stop()); } catch (e) {}
-          try { w.__npCapTrack = null; } catch (e) {}
-          let manual = null;
-          try {
-            const tmp = cv.captureStream(0);
-            const trk = tmp.getVideoTracks()[0];
-            if (trk && typeof trk.requestFrame === "function") manual = { stream: tmp, track: trk };
-            else { try { tmp.getTracks().forEach((x) => x.stop()); } catch (e) {} }
-          } catch (e) {}
-          mediaStream = manual ? manual.stream : cv.captureStream(30);
-          if (manual) { try { w.__npCapTrack = manual.track; } catch (e) {} }
+          try { iframe.contentWindow.__npCapTrack = got.track; } catch (e) {}
+          mediaStream = got.stream;
           window.__npCall = peer.call(conn.peer, mediaStream);
           return true;
         } catch (e) { return false; }
