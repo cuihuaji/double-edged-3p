@@ -106,7 +106,7 @@
 <script src="peerjs.min.js"></script>
 <script src="diag.js"></script>
 <script src="subs.js"></script>
-<script src="lock.js"></script>
+<script src="lock.js?v=7"></script>
 <script>
 (function () {
   "use strict";
@@ -131,7 +131,7 @@
 
   iframe.src = "../html5/play3p.html?seed=" + SEED + "&cb=" + Date.now() + "&nolock=1";   // 远程同乐：不锁步
 
-  const NOLOCK = new URLSearchParams(location.search).has("nolock");   // 远程同乐
+  const NOLOCK = true;   // 远程同乐是唯一模式：锁步永久禁用（好友只看视频+转发输入）
   const lock = new Lock({
     side: "p1", seed: SEED, frame: iframe, expectPeers: (parseInt(new URLSearchParams(location.search).get("p") || "2", 10) || 2),
     log: (m) => console.log("[lock]", m),
