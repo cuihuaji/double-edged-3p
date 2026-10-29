@@ -127,6 +127,22 @@
     if (layer) {
       layer.addEventListener("pointerdown", (e) => self._mouse("md", e), true);
       layer.addEventListener("pointerup", (e) => self._mouse("mu", e), true);
+      /* 远程同乐模式：好友不跑锁步，lock 永不 started，帧闸门不消费 pend。
+       * 房主点击改为本地直注（applyEvents），立即生效；好友输入由 host3 转发注入。 */
+      layer.addEventListener("pointerdown", (e) => {
+        try {
+          const d = self.frame.contentDocument, w = self.frame.contentWindow;
+          const cv = d.querySelector("canvas");
+          const r = cv.getBoundingClientRect();
+          const fx = Math.min(1, Math.max(0, (e.clientX - r.left) / r.width));
+          const fy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
+          const L = self.L;
+          if (L && L.applyEvents) {
+            L.applyEvents([["md", +fx.toFixed(4), +fy.toFixed(4)]]);
+            setTimeout(() => { try { L.applyEvents([["mu", +fx.toFixed(4), +fy.toFixed(4)]]); } catch (e2) {} }, 60);
+          }
+        } catch (err) {}
+      }, false);
     }
   };
 
