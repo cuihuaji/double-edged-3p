@@ -139,6 +139,7 @@
   });  /* 远程同乐（nolock）：桩掉锁步起跑与闸门——好友不跑游戏副本，
    * 任何锁步等待都会永久冻结。play3p 保持 ready 自转自由跑。 */
   if (NOLOCK) {
+    lock.__nolock = true;
     lock._maybeStart = function () {};
     lock._startPacing = function () {};
     lock._send = function () {};
@@ -295,8 +296,16 @@
             bubbles: true, cancelable: true, view: w
           };
           let ev;
+          const __L = w.__lock || null;   // play3p 暴露的 L 对象本体
           if (data.evt.indexOf("key") === 0) {
+            // 战斗键走 applyEvents（与房主键盘同路径，含 KEYCODE 映射）；菜单键（Enter 等）走 KeyboardEvent
+            const map = w.KEYCODE_ || null;
             ev = new w.KeyboardEvent(data.evt, { key: data.key, code: data.code, keyCode: data.keyCode, bubbles: true, cancelable: true });
+            const P2KEYS = ["KeyW","KeyA","KeyS","KeyD","KeyG","KeyH"];
+            if (__L && __L.applyEvents && data.code && P2KEYS.indexOf(data.code) >= 0) {
+              __L.applyEvents([[data.evt === "keydown" ? "d" : "u", data.code]]);
+              return;
+            }
           } else if (data.evt.indexOf("pointer") === 0) {
             O.pointerId = 1; O.pointerType = "mouse"; O.isPrimary = true;
             ev = new w.PointerEvent(data.evt, O);

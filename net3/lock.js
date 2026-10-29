@@ -117,6 +117,9 @@
           delete self._downAt[code];
         }
         self._sendOwn(target);
+      } else if (self.__nolock && self.L && self.L.applyEvents) {
+        /* 远程同乐：不锁步，键盘直注（["d"/"u", code] 与 applyEvents 格式一致） */
+        try { self.L.applyEvents([[isDown ? "d" : "u", code]]); } catch (err2) {}
       }
     };
     global.addEventListener("keydown", onKey(true), true);
@@ -138,8 +141,7 @@
           const fy = Math.min(1, Math.max(0, (e.clientY - r.top) / r.height));
           const L = self.L;
           if (L && L.applyEvents) {
-            L.applyEvents([["md", +fx.toFixed(4), +fy.toFixed(4)]]);
-            setTimeout(() => { try { L.applyEvents([["mu", +fx.toFixed(4), +fy.toFixed(4)]]); } catch (e2) {} }, 60);
+            L.applyEvents([["md", +fx.toFixed(4), +fy.toFixed(4)], ["mu", +fx.toFixed(4), +fy.toFixed(4)]]);
           }
         } catch (err) {}
       }, false);
