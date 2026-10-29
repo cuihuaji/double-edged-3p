@@ -115,7 +115,7 @@
     for (var i = 0; i < cur.length; i++) {
       if (!cur[i][1]) continue;
       ran++;
-      try { cur[i][1](L.vnow); } catch (e) { window.__rafErrs && window.__rafErrs.push(String(e)); }
+      try { cur[i][1](L.vnow); } catch (e) { window.__rafErrs && window.__rafErrs.push((e && e.stack) ? String(e.stack).slice(0, 1500) : String(e)); }
     }
     L.qLen = ran;               // 这一步排空了几个内部回调（正常应为 1）
     if (L.started) L.frames++;
