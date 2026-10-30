@@ -644,16 +644,25 @@
         try { game.$BgnumPlayers = want; npFixed++; window.__npNumPlayers = want; } catch (e) {}
         np = want;
       }
-      var hb2 = null; try { hb2 = root.$BghealthBarP2 || root.healthBarP2; } catch (e) {}
-      if (mode === 1) {
-        /* 单人：青色斯巴达不该存在 —— 藏起来并清掉它的血条 */
-        var p2 = null; try { p2 = game.$Bgp2Character; } catch (e) {}
-        if (p2) {
-          try { if (p2.visible !== false) { p2.visible = false; window.__deP2Hidden = (window.__deP2Hidden || 0) + 1; } } catch (e) {}
+      /* 超出所选人数的玩家一律隐藏：这个移植是「3 人改版」，
+       * 实测单人模式下 p3Character 依然存在（140,375 的青色斯巴达），
+       * 还带着 p3Hud（右上那个 "P3 100"）。 */
+      if (mode > 0) {
+        for (var pk = 2; pk <= 3; pk++) {
+          var ch = null; try { ch = game["$Bgp" + pk + "Character"]; } catch (e) {}
+          var on = pk <= mode;
+          if (ch) {
+            try { if (ch.visible !== on) { ch.visible = on; window.__deHidden = (window.__deHidden || 0) + 1; } } catch (e) {}
+          }
+          var hb = null; try { hb = root["$BghealthBarP" + pk] || root["healthBarP" + pk]; } catch (e) {}
+          if (hb) { try { if (hb.alpha !== (on ? 1 : 0)) hb.alpha = on ? 1 : 0; } catch (e) {} }
+          var hud = null; try { hud = game["$Bgp" + pk + "Hud"]; } catch (e) {}
+          if (hud) { try { hud.visible = on; } catch (e) {} }
+          var sc = null; try { sc = root["$Bgp" + pk + "Score"] || root["p" + pk + "Score"]; } catch (e) {}
+          if (sc) { try { sc.visible = on; } catch (e) {} }
+          var lv = null; try { lv = root["$Bgp" + pk + "_lives"] || root["p" + pk + "_lives"]; } catch (e) {}
+          if (lv) { try { lv.visible = on; } catch (e) {} }
         }
-        if (hb2) { try { hb2.alpha = 0; } catch (e) {} }
-      } else if (mode === 2 && hb2) {
-        try { hb2.alpha = 1; } catch (e) {}
       }
     }
 
