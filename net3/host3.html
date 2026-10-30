@@ -316,6 +316,14 @@
   try { window.__deSample = deSample; } catch (e) {}
   /* 一句中文都没出来的原文都记在这里：控制台敲 __subsMiss() 就能整份拷出来 */
   window.__subsMiss = function () { return Object.keys(window.__deMiss || {}); };
+  window.__npQualityMode = function (m) {
+    window.__npQMode = (m === "smooth") ? "smooth" : "sharp";
+    const s = window.__npSender;
+    if (s && window.__npApplyQuality) window.__npApplyQuality(s, (window.__npQuality && window.__npQuality.bitrate) || 6000000);
+    window.__diag && window.__diag.report("media", "画质模式 " + window.__npQMode,
+      window.__npQMode === "smooth" ? "允许降到 0.8 分辨率换流畅" : "死守原始分辨率", "info");
+    return window.__npQMode;
+  };
   /* 卡顿定位：一句话读三个数字
    *   subs  = 我的字幕轮询耗时
    *   sweep = 我的守卫轮询耗时（在 iframe 里）
@@ -480,18 +488,24 @@
            * 所以：1) 显式钉住 scaleResolutionDownBy = 1；
            *       2) 在 negotiationcompleted 与 0.8/2.5/6/12 秒反复重申；
            *       3) 每 4 秒巡检时再兜一次（只调码率，绝不调分辨率）。 */
+          /* 战斗卡顿时可以现场切换（控制台）：
+           *   __npQualityMode("smooth")  允许编码器降分辨率换流畅
+           *   __npQualityMode("sharp")   死守 880×640（默认）
+           * 默认 sharp，是因为之前 4 倍缩放的糊图就是这么来的。 */
           function npApplyQuality(sender, bitrate) {
             if (!sender) return false;
+            window.__npSender = sender;
+            const smooth = window.__npQMode === "smooth";
             try { if (sender.track) sender.track.contentHint = "detail"; } catch (e) {}
             try {
               const p = sender.getParameters();
-              p.degradationPreference = "maintain-resolution";
+              p.degradationPreference = smooth ? "balanced" : "maintain-resolution";
               if (!p.encodings || !p.encodings.length) p.encodings = [{ active: true }];
               const e0 = p.encodings[0];
               e0.active = true;
               e0.maxBitrate = bitrate;
               e0.maxFramerate = 30;
-              e0.scaleResolutionDownBy = 1;      /* 关键：不许缩分辨率 */
+              e0.scaleResolutionDownBy = smooth ? 0.8 : 1;   /* 关键：默认不许缩分辨率 */
               e0.priority = "high";
               try { e0.networkPriority = "high"; } catch (e) {}
               const ret = sender.setParameters(p);
@@ -796,6 +810,6 @@
     setInterval(poll, 300);
   })();
 </script>
-<script src="frz.js?v=7"></script>
+<script src="frz.js?v=8"></script>
 </body>
 </html>
