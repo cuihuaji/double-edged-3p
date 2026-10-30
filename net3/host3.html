@@ -288,6 +288,19 @@
     } catch (e) {}
     let line = "";
     try { line = window.DE_TRANSLATE ? window.DE_TRANSLATE(texts) : ""; } catch (e) {}
+    /* 未收录的长句记一条诊断：打的时候哪句没出中文，面板里会直接列出来 */
+    try {
+      for (let i = 0; i < texts.length; i++) {
+        const s = texts[i];
+        if (s.length < 8 || !/[A-Za-z]{3,}/.test(s) || !/\s/.test(s)) continue;
+        if (window.DE_MATCH && window.DE_MATCH(s)) continue;
+        if (window.DE_UI_N && window.DE_UI_N[window.DE_NORM(s)]) continue;
+        window.__deMiss = window.__deMiss || {};
+        if (window.__deMiss[s]) continue;
+        window.__deMiss[s] = 1;
+        window.__diag && window.__diag.report("sub", "字幕缺词：" + s.slice(0, 42), "把这条原文发给开发者补进词表", "warn");
+      }
+    } catch (e) {}
     if (line === deLast) return;
     deLast = line;
     if (window.DE_bar) window.DE_bar(line, 7000);
