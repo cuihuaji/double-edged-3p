@@ -545,9 +545,17 @@
   (function () {
     var pill = document.getElementById("de-status");
     var hint = document.getElementById("room-hint");
+    /* 页面自己的提示是整句话，塞不进顶部小条，压成短状态 */
+    function short(txt) {
+      if (/已接入|已连接/.test(txt)) return "已接入房主画面 · P2 手柄";
+      if (/还没开房|正在等|等待/.test(txt)) return "等待房主开房…";
+      if (/连接中/.test(txt)) return "连接中…";
+      if (/房间号/.test(txt)) return "输入房间号连接";
+      return txt.length > 18 ? txt.slice(0, 16) + "…" : txt;
+    }
     function set(txt, ok) {
       if (!pill || !txt) return;
-      pill.textContent = txt;
+      pill.textContent = short(txt);
       pill.className = ok ? "ok" : "";
     }
     if (hint) {
