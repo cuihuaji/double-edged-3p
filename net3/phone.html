@@ -591,6 +591,21 @@
           return [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)];
         };
         try {
+          var box = document.getElementById("de-metrics");
+          if (!box) {
+            box = document.createElement("pre");
+            box.id = "de-metrics";
+            box.style.cssText = "position:fixed;left:0;top:0;z-index:10009;margin:0;padding:6px 8px;" +
+              "background:rgba(0,0,0,.82);color:#8ef;font:10px/1.35 Consolas,monospace;pointer-events:none;white-space:pre";
+            document.body.appendChild(box);
+          }
+          var fmt = function (n, o) { return n + "=" + (o ? o.join(",") : "null"); };
+          box.textContent = "vp " + innerWidth + "x" + innerHeight + "\\n" +
+            fmt("dpad", rc(".ruffle-touch-dpad")) + "\\n" + fmt("攻", rc(".action-z")) + "  " + fmt("跳", rc(".action-x")) + "\\n" +
+            fmt("状态", rc("#de-status")) + "\\nrotate=" + (function () { var e = document.getElementById("de-rotate"); return e ? getComputedStyle(e).display : "absent"; })() +
+            " scrollH=" + document.documentElement.scrollHeight;
+        } catch (e0) {}
+        try {
           parent.postMessage({
             deMetrics: 1,
             vp: [innerWidth, innerHeight],
