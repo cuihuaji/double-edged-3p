@@ -278,11 +278,17 @@ window.DE_UI_N = (function () {
 })();
 
 /* 一行字幕：优先台词，其次界面词；纯数字忽略 */
+/* 非剧情标签：只在设置/菜单界面有意义，躲在关卡 HUD 里出现时只会污染字幕 */
+var deNoise = function (s) {
+  return /^(redefine keys|reset keys|player select|credits)$/i.test(String(s).trim());
+};
 window.DE_TRANSLATE = function (texts) {
   var dialogue = [], ui = [];
   for (var i = 0; i < texts.length; i++) {
     var raw = texts[i];
     if (/^[\d\s:,.%+\-]+$/.test(raw)) continue;
+    /* 设置界面专用的标签，出现在关卡里只是残留，不该当字幕 */
+    if (deNoise(raw)) continue;
     var zh = window.DE_MATCH(raw);
     if (zh) { if (dialogue.indexOf(zh) < 0) dialogue.push(zh); continue; }
     var k = window.DE_NORM(raw);
