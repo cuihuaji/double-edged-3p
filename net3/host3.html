@@ -450,20 +450,63 @@
           }
           const call = peer.call(conn.peer, mediaStream);
           window.__npCall = call;
-          /* 抗拥塞：优先保帧率并限码率。
-           * 带宽波动时浏览器默认会先砍分辨率/帧率，极端情况下编码器干脆不再产帧，
-           * 表现和「捕获停住」完全一样（framesEncoded 停、好友画面定格）。
-           * maintain-framerate + 码率上限让画面优先保持连续。 */
+          /* ---- 画质：这里是画质差的两处根源 ----
+           * 1) 原来是 maxBitrate = 1.5M。像素画全是锐利边缘和高频细节，
+           *    1.5M 下编码器只能把它们糊成色块。
+           * 2) 原来是 degradationPreference = maintain-framerate：
+           *    一有拥塞就先砍分辨率，画面直接发虚。
+           * 这个游戏是 880×640 / 30fps 的像素画，分辨率远比流畅度重要，
+           * 所以改成保分辨率，并把码率上限抬到 6M（局域网/家宽足够）。
+           * contentHint = detail 让编码器优先保住空间细节而不是平滑掉。 */
           try {
             const pc = call && call.peerConnection;
             const sender = pc && pc.getSenders && pc.getSenders()[0];
             if (sender) {
+              try { if (sender.track) sender.track.contentHint = "detail"; } catch (e) {}
               const p = sender.getParameters();
-              p.degradationPreference = "maintain-framerate";
+              p.degradationPreference = "maintain-resolution";
               if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-              p.encodings[0].maxBitrate = 1500000;
+              p.encodings[0].maxBitrate = 6000000;
               p.encodings[0].maxFramerate = 30;
+              p.encodings[0].scaleResolutionDownBy = 1;
+              p.encodings[0].priority = "high";
               sender.setParameters(p).catch(() => {});
+              window.__npQuality = { bitrate: 6000000, degradation: "maintain-resolution" };
+            }
+          } catch (e) {}
+
+          /* 自适应码率：慢链路就别硬顶 6M，否则队列堆积反而更卡。
+           * 每 4 秒看一次 outbound 统计，qualityLimitationReason 连续两次是
+           * bandwidth 就降一档；一直没受限就逐步爬回上限。 */
+          try {
+            const pc2 = call && call.peerConnection;
+            const snd = pc2 && pc2.getSenders && pc2.getSenders()[0];
+            if (snd && !window.__npQTimer) {
+              let cur = 6000000, lowStreak = 0, okStreak = 0;
+              window.__npQTimer = setInterval(async () => {
+                let st = null;
+                try {
+                  const rep = await snd.getStats();
+                  rep.forEach((r) => { if (r.type === "outbound-rtp" && r.kind === "video") st = r; });
+                } catch (e) {}
+                if (!st) return;
+                const lim = st.qualityLimitationReason || "none";
+                if (lim === "bandwidth") { lowStreak++; okStreak = 0; } else { okStreak++; lowStreak = 0; }
+                let next = cur;
+                if (lowStreak >= 2 && cur > 1500000) next = Math.max(1500000, Math.round(cur / 2));
+                else if (okStreak >= 3 && cur < 6000000) next = Math.min(6000000, Math.round(cur * 1.5));
+                if (next !== cur) {
+                  cur = next; lowStreak = 0; okStreak = 0;
+                  try {
+                    const q = snd.getParameters();
+                    if (q.encodings && q.encodings[0]) { q.encodings[0].maxBitrate = cur; snd.setParameters(q).catch(() => {}); }
+                  } catch (e) {}
+                  window.__diag && window.__diag.report("media", "码率调整为 " + Math.round(cur / 1000) + "kbps", "受限原因：" + lim, "info");
+                }
+                window.__npQuality = { bitrate: cur, degradation: "maintain-resolution", reason: lim,
+                  w: st.frameWidth, h: st.frameHeight, fps: st.framesPerSecond,
+                  kbps: Math.round((st.bytesSent || 0) * 8 / 1000 / Math.max(1, (performance.now() - (st.timestamp || 8)) / 1000)) || undefined };
+              }, 4000);
             }
           } catch (e) {}
         } catch (err) { window.__diag && window.__diag.report("media", "视频流失败", String(err && err.message || err), "warn"); }

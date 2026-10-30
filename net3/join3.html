@@ -68,7 +68,7 @@
 </style>
 </head>
 <body>
-<div id="wrap"><iframe id="game" allow="autoplay; fullscreen"></iframe><video id="rv" autoplay playsinline style="display:none;position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:5"></video></div>
+<div id="wrap"><iframe id="game" allow="autoplay; fullscreen"></iframe><video id="rv" autoplay playsinline style="display:none;position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:5;image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges"></video></div>
 
 <div id="panel">
   <h1>三人联机 · 好友</h1>
@@ -227,7 +227,40 @@
           const L = window.__np && window.__np.lock;
           if (L) { L.stop(); L.started = false; L._pumpOnce = function () { return false; }; L._send = function () {}; L._sendOwn = function () {}; }
         } catch (e2) {}
+        /* 像素画不要用双线性插值放大：整幅画面会被插成一团糊。
+         * pixelated 让放大后的每个像素保持方块边界，接近点对点。 */
+        try {
+          v.style.imageRendering = "pixelated";
+          const tint = document.createElement("style");
+          tint.textContent = "#rv{image-rendering:pixelated!important;}";
+          document.head.appendChild(tint);
+        } catch (e3) {}
         v.play().catch(() => {});
+        /* 面板里显示对端真实画质：收到多少像素、多少码率 */
+        try {
+          const statsTimer = setInterval(async () => {
+            try {
+              const pc = call.peerConnection;
+              if (!pc) return;
+              const rep = await pc.getStats();
+              let vin = null, cin = null;
+              rep.forEach((r) => {
+                if (r.type === "inbound-rtp" && r.kind === "video") vin = r;
+                if (r.type === "candidate-pair" && r.state === "succeeded") cin = r;
+              });
+              const el = document.getElementById("v-canvas");
+              if (el && vin) {
+                const kb = vin.bytesReceived ? Math.round(vin.bytesReceived * 8 / 1000 / Math.max(1, (performance.now() - (vin.timestamp || 1)) / 1000)) : 0;
+                el.textContent = (vin.frameWidth || "?") + "×" + (vin.frameHeight || "?") + " · " + (kb > 0 ? kb + "kbps" : "") +
+                  (vin.framesDecoded ? " · 解码" + vin.framesDecoded : "");
+              }
+              window.__npQualityRx = vin ? { w: vin.frameWidth, h: vin.frameHeight, fps: vin.framesPerSecond,
+                decoded: vin.framesDecoded, dropped: vin.framesDropped,
+                kbps: vin.bytesReceived ? Math.round(vin.bytesReceived * 8 / 1000 / Math.max(1, (performance.now() - (vin.timestamp || 1)) / 1000)) : 0 } : null;
+            } catch (e4) {}
+          }, 3000);
+          window.__npRxTimer = statsTimer;
+        } catch (e5) {}
         v.onclick = () => v.play();
         const hint = document.getElementById("room-hint");
         if (hint) hint.textContent = "已接入房主画面（远程同乐）。你的键鼠实时传给房主，菜单由房主操作。";
