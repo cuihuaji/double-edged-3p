@@ -34,17 +34,47 @@
   }
   .note { margin-top: 18px; font-size: 12px; color: #7b8fa3; line-height: 1.8; }
   .note b { color: #ffb4a2; }
-</style>
+  /* ===== 手机大厅：触屏小屏走这套，电脑不受影响 ===== */
+  #mobile-lobby { display: none; }
+  html.mob #mobile-lobby { display: block; }
+  html.mob #desk-lobby { display: none !important; }
+  html.mob .wrap { padding: 24px 18px 20px; }
+  html.mob h1 { font-size: 21px; letter-spacing: 1px; }
+  #mobile-lobby .big {
+    width: 100%; padding: 15px 14px; font-size: 18px; letter-spacing: 2px; text-align: center;
+    background: #16202b; border: 1px solid #35485c; border-radius: 10px; color: #e8eef6;
+    font-family: Consolas, monospace; outline: none;
+  }
+  #mobile-lobby .big:focus { border-color: #6fd3ff; }
+  #mobile-lobby .go {
+    width: 100%; margin-top: 12px; padding: 15px; font-size: 17px; font-weight: 600; letter-spacing: 2px;
+    background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; border: 0; border-radius: 10px;
+  }
+  #mobile-lobby .go:active { transform: translateY(1px); }
+  #mobile-lobby .tip { margin-top: 14px; font-size: 12px; color: #8fa3b8; line-height: 1.9; }
+  #mobile-lobby .tip b { color: #ffd166; }
+  #mobile-lobby .desk-link { display: block; margin-top: 16px; font-size: 12px; color: #6b8299; }</style>
 </head>
 <body>
 <div class="wrap">
-  <h1>绝地双刃 · 联机大厅</h1>
+  <div id="mobile-lobby">
+    <h1>绝地双刃 · 手机手柄</h1>
+    <div class="sub">手机当 <b>P2</b> 用，画面同步显示房主的游戏。向房主要房间号填在下面。</div>
+    <input class="big" id="m-room" placeholder="房间号（de 开头）" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <button class="go" id="m-go">加入房间</button>
+    <div class="tip">
+      左手十字方向键 · 右手 <b>攻</b> / <b>跳</b> · 两个同按＝必杀<br>
+      右上 ⚙️ 调手柄大小和透明度，👁 收起手柄看画面
+    </div>
+    <a class="desk-link" href="index.html?web=1">用电脑打开 → 房主 / 好友入口</a>
+  </div>
+  <div id="desk-lobby">  <h1>绝地双刃 · 联机大厅</h1>
   <div class="sub">每个人都在自己的电脑上跑游戏，网络上只传按键。三个人都先双击 <b>启动.bat</b>，再打开这个页面。</div>
 
   <div class="cards">
     <a class="card host" href="net3/host3.html?p=1">
       <b>我是房主（双人）</b>
-      <span>点进来后<br>把生成的房号发给另外两人</span>
+      <span>点进来后开房<br>把房号发给 1 位好友即开局</span>
     </a>
     <a class="card join" href="net3/join3.html">
       <b>我是好友</b>
@@ -67,6 +97,29 @@
     菜单（PLAY / 选人数 / 选地图）<b>只有房主能操作</b>，好友等房主开局。<br>
     从本机 <b>http://localhost:8740/</b> 打开即可；界面锁已拆除，局域网 IP / 公网也能直接开（直接双击 html 文件因 file:// 协议仍无法加载资源，需经本服务）。
   </div>
+  </div>
 </div>
+<script>
+  /* 手机进大厅：换成「填房号 → 手机手柄页」；电脑保持原样（?web=1 可强制电脑版） */
+  (function () {
+    var ua = navigator.userAgent;
+    var mobile = /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(ua) ||
+                 (navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) < 820);
+    if (!mobile || /[?&]web=1/.test(location.search)) return;
+    document.documentElement.className += " mob";
+    var go = document.getElementById("m-go"), inp = document.getElementById("m-room");
+    function enter() {
+      var c = (inp.value || "").trim().toLowerCase().replace(/\s+/g, "");
+      if (!c) { inp.focus(); return; }
+      if (!/^de/.test(c)) { inp.style.borderColor = "#e2725b"; inp.focus(); return; }
+      location.href = "net3/phone.html?room=" + encodeURIComponent(c);
+    }
+    if (go) go.addEventListener("click", enter);
+    if (inp) {
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") enter(); });
+      inp.addEventListener("input", function () { inp.style.borderColor = "#35485c"; });
+    }
+  })();
+</script>
 </body>
 </html>
