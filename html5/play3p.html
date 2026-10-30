@@ -379,12 +379,27 @@
     }
   };
   window.addEventListener("resize", function () { setTimeout(fitCanvas, 80); });
+  /* P2 的按键（菜单上写的是 G 攻击 / H 跳 / WASD 移动）。
+   * 单人模式下必须屏蔽：FightingGameMain.as:546 是 `else if(Key.customDown(10)) p2Join();`，
+   * 按到 P2 的键就会把青色斯巴达拉进来，并把 numPlayers 改成 2。 */
+  var P2KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, KeyG: 1, KeyH: 1 };
+
   /* 一次事件批量应用（同一帧内） */
   L.applyEvents = function (list) {
     L.evCount = (L.evCount || 0) + list.length;
     for (var q = 0; q < list.length; q++) if (list[q][0] === "md") L.clickApplied = (L.clickApplied || 0) + 1;
     for (var i = 0; i < list.length; i++) {
       var e = list[i];
+      /* 在 PLAYER SELECT 上点哪块面板，就是几玩家（单人也会被端口当成 3 人） */
+      if (e[0] === "md") {
+        try {
+          var A0 = window.AVMPlayerPoki;
+          var r0 = A0 && A0._avmHandler && A0._avmHandler._playerglobal._stage._stage.getChildAt(0);
+          if (r0 && r0.currentLabel === "num_players") window.__deMode = (e[1] < 0.45) ? 1 : 2;
+        } catch (e0) {}
+      }
+      /* 单人：丢掉 P2 按键，p2Join 就永远不会被触发 */
+      if (window.__deMode === 1 && (e[0] === "d" || e[0] === "u") && P2KEYS[e[1]]) continue;
       if (e[0] === "d") fireKey("keydown", e[1]);
       else if (e[0] === "u") fireKey("keyup", e[1]);
       else if (e[0] === "md") {
@@ -591,16 +606,32 @@
       for (var i = 0; i < n; i++) { var c = null; try { c = o.getChildAt(i); } catch (e) {} if (c) walk(c, d + 1); }
     })(root, 0);
 
-    /* 1) 真实玩家数 = 存在的玩家血条数；只降不升 */
+    /* 1) 玩家数：以 PLAYER SELECT 的选择为准
+     * 实测：单人模式进关后 numPlayers 也是 3，healthBarP2.alpha 被置 1，
+     * 说明端口把人数写死成多人了。血条 MC 在时间轴上一直都在，不能用来数玩家。 */
+    var mode = 0; try { mode = window.__deMode || 0; } catch (e) {}
     var bars = 0;
     ["healthBar", "healthBarP2", "healthBarP3", "healthBarP4"].forEach(function (n) {
       var v = null; try { v = root["$Bg" + n] || root[n]; } catch (e) {}
       if (v) bars++;
     });
-    if (game && bars >= 2) {
+    if (game) {
       var np = 0; try { np = game.$BgnumPlayers; } catch (e) {}
-      if (typeof np === "number" && np > bars) {
-        try { game.$BgnumPlayers = bars; npFixed++; window.__npNumPlayers = bars; } catch (e) {}
+      var want = mode > 0 ? mode : 0;
+      if (want && typeof np === "number" && np !== want) {
+        try { game.$BgnumPlayers = want; npFixed++; window.__npNumPlayers = want; } catch (e) {}
+        np = want;
+      }
+      var hb2 = null; try { hb2 = root.$BghealthBarP2 || root.healthBarP2; } catch (e) {}
+      if (mode === 1) {
+        /* 单人：青色斯巴达不该存在 —— 藏起来并清掉它的血条 */
+        var p2 = null; try { p2 = game.$Bgp2Character; } catch (e) {}
+        if (p2) {
+          try { if (p2.visible !== false) { p2.visible = false; window.__deP2Hidden = (window.__deP2Hidden || 0) + 1; } } catch (e) {}
+        }
+        if (hb2) { try { hb2.alpha = 0; } catch (e) {} }
+      } else if (mode === 2 && hb2) {
+        try { hb2.alpha = 1; } catch (e) {}
       }
     }
 
