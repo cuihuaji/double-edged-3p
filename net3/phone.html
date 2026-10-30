@@ -3,11 +3,18 @@
 <head>
 <meta charset="utf-8" />
 <link rel="icon" href="data:," />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
 <title>Double Edged · 加入</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; background: #07090c; overflow: hidden;
-    font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; color: #cfd6df; }
+    font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; color: #cfd6df;
+    /* 整页禁掉浏览器手势：不禁的话两指会被当成捏合缩放，浏览器直接 touchcancel 掉其中一根 */
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent; }
 
   #wrap { position: absolute; inset: 0; }
   /* 固定 880x640：AVM 按 iframe 内部视口决定画布像素和舞台比例，
@@ -750,37 +757,51 @@
 /* ------------------------------------------------------------------
  * 攻 / 跳（双指同按 = 必杀）
  *
- * 库的两个动作键各自挂 pointerdown/up，真机上第二根手指会把第一根的 pointer 取消掉，
- * 于是攻刚按下就被松掉，必杀按不出来。这里改成「按持有者计数」的状态机：
- *   holders[键] = { 持有者 id: 1 }
- * 手指（touch）和指针（pointer）各算一个持有者，谁在都不松键；全部走了才松。
- * 这样无论设备只派发 touch、只派发 pointer、还是两者都派发，结果都一样，也不会重发。
- * 轻点也保底按满 MIN_HOLD 毫秒，免得主控端 30fps 采样没轮到就松了。
+ * 1) 命中判定用事件自带的 target：每个 Touch 有自己的 target，Pointer 事件也有，
+ *    不再靠 clientX/Y 换算坐标（缩放、滚动、DPR 一变就错）。
+ * 2) 监听一律 passive、不 preventDefault：在 touchstart 里 preventDefault 会打断
+ *    随后到来的多点触摸序列（第二根手指直接收不到），这是之前双指失效的直接原因。
+ * 3) 每个键维护「持有者集合」：每根手指、每个指针各算一个持有者，全走了才松键。
+ * 4) 轻点保底 MIN_HOLD 毫秒，保证主控端 30fps 采样能轮到。
  * ------------------------------------------------------------------ */
 (function () {
-  var CODE_OF = { "action-z": "KeyG", "action-x": "KeyH" };
   var BTN_OF  = { "KeyG": ".action-z", "KeyH": ".action-x" };
   var KEYCODE = { "KeyG": 71, "KeyH": 72 };
   var KEYCHR  = { "KeyG": "g", "KeyH": "h" };
-  var MIN_HOLD = 90;               /* ms：轻点也至少按住这么久，保证主控端采得到 */
+  var MIN_HOLD = 90;
 
   var holders = { KeyG: {}, KeyH: {} };
   var down = { KeyG: false, KeyH: false };
   var pressAt = { KeyG: 0, KeyH: 0 };
-  var touchCode = {};              /* touchId -> code */
-  var ptrCode = {};                /* pointerId -> code */
+  var pendingUp = { KeyG: null, KeyH: null };
+  var touchCode = {}, ptrCode = {};
   var pad = null;
-  window.__mt = { holders: holders, down: down, touchCode: touchCode, ptrCode: ptrCode, log: [], codeAt: codeAt };
 
-  function codeAt(x, y) {
-    var el = document.elementFromPoint(x, y);
-    while (el) {
-      if (el.classList && el.classList.contains("action-z")) return "KeyG";
-      if (el.classList && el.classList.contains("action-x")) return "KeyH";
+  /* ?pad-dbg=1 时左下角显示触摸/按键流水，手机上出问题直接截图就能定位 */
+  var DBG = /[?&]pad-dbg=1/.test(location.search);
+  var dbgBox = null, dbgLines = [];
+  function dbg(s) {
+    if (!DBG) return;
+    dbgLines.push(s);
+    if (dbgLines.length > 8) dbgLines.shift();
+    if (!dbgBox) {
+      dbgBox = document.createElement("pre");
+      dbgBox.style.cssText = "position:fixed;left:0;bottom:0;z-index:10020;margin:0;padding:4px 6px;" +
+        "background:rgba(0,0,0,.8);color:#7fe;font:10px/1.35 Consolas,monospace;pointer-events:none;white-space:pre";
+      document.body.appendChild(dbgBox);
+    }
+    dbgBox.textContent = dbgLines.join("\n");
+  }
+
+  function codeOfEl(el) {
+    while (el && el.classList) {
+      if (el.classList.contains("action-z")) return "KeyG";
+      if (el.classList.contains("action-x")) return "KeyH";
       el = el.parentElement;
     }
     return null;
   }
+  function codeAtPoint(x, y) { return codeOfEl(document.elementFromPoint(x, y)); }
 
   function emit(code, on) {
     var ev;
@@ -797,16 +818,14 @@
     window.dispatchEvent(ev);
     var el = document.querySelector(BTN_OF[code]);
     if (el) el.classList.toggle("active", on);
+    dbg((on ? "keydown " : "keyup ") + code);
   }
-
-  var pendingUp = { KeyG: null, KeyH: null };
 
   function applyCode(code) {
     var want = false;
     for (var k in holders[code]) { want = true; break; }
 
     if (want) {
-      /* 又按住了：撤销还没落地的保底松手 */
       if (pendingUp[code]) { clearTimeout(pendingUp[code]); pendingUp[code] = null; }
       if (down[code]) return;
       down[code] = true;
@@ -821,8 +840,6 @@
     var held = (window.performance || Date).now() - pressAt[code];
     var wait = MIN_HOLD - held;
     if (wait > 0) {
-      /* 轻点保底：至少按住 MIN_HOLD 毫秒，主控端 30fps 才采得到；
-         到点时若已经没有手指，才真的松键（不能在这里看 down，它已经置 false 了）。 */
       pendingUp[code] = setTimeout(function () {
         pendingUp[code] = null;
         for (var k2 in holders[code]) { return; }
@@ -832,70 +849,61 @@
       emit(code, false);
     }
   }
-  function hold(id, code) { holders[code][id] = 1; applyCode(code); }
-  function drop(id, code) { if (holders[code][id]) { delete holders[code][id]; applyCode(code); } }
 
-  /* ---- touch ---- */
+  function hold(id, code) { dbg("hold " + id + " " + code); holders[code][id] = 1; applyCode(code); }
+  function drop(id, code) { if (holders[code][id]) { dbg("drop " + id + " " + code); delete holders[code][id]; applyCode(code); } }
+
   function onTouch(e) {
-    var i, t, code, id, all, ch;
-    if (e.type === "touchstart" || e.type === "touchmove") {
-      all = e.touches || [];
-      var hit = false;
-      for (i = 0; i < all.length; i++) {
-        t = all[i];
-        id = "t" + t.identifier;
-        code = codeAt(t.clientX, t.clientY);
-        if (hit === false && code) hit = true;
-        if ((touchCode[id] || null) !== code) {
-          if (touchCode[id]) drop(id, touchCode[id]);
-          if (code) { touchCode[id] = code; hold(id, code); }
-          else delete touchCode[id];
-        }
+    var i, t, id, code, ch, all;
+    if (e.type === "touchstart") {
+      ch = e.changedTouches || [];
+      for (i = 0; i < ch.length; i++) {
+        t = ch[i]; id = "t" + t.identifier;
+        code = codeOfEl(t.target) || codeAtPoint(t.clientX, t.clientY);
+        dbg("touchstart " + id + " -> " + (code || "none"));
+        if (code && touchCode[id] !== code) { touchCode[id] = code; hold(id, code); }
       }
-      if (hit && e.cancelable) e.preventDefault();
-    } else {                                   /* touchend / touchcancel */
+    } else if (e.type === "touchend" || e.type === "touchcancel") {
       ch = e.changedTouches || [];
       for (i = 0; i < ch.length; i++) {
         id = "t" + ch[i].identifier;
+        dbg(e.type + " " + id);
         if (touchCode[id]) { drop(id, touchCode[id]); delete touchCode[id]; }
+      }
+    } else {
+      all = e.touches || [];
+      for (i = 0; i < all.length; i++) {
+        t = all[i]; id = "t" + t.identifier;
+        if (!touchCode[id]) continue;
+        code = codeAtPoint(t.clientX, t.clientY);
+        if (code && code !== touchCode[id]) {
+          drop(id, touchCode[id]); touchCode[id] = code; hold(id, code);
+        }
       }
     }
   }
-  var TOPTS = { passive: false, capture: true };
+  var TOPTS = { passive: true, capture: true };
   document.addEventListener("touchstart", onTouch, TOPTS);
   document.addEventListener("touchmove", onTouch, TOPTS);
   document.addEventListener("touchend", onTouch, TOPTS);
   document.addEventListener("touchcancel", onTouch, TOPTS);
 
-  /* ---- pointer（含鼠标；与 touch 互为备份，不会重复发键）---- */
-  document.addEventListener("pointerdown", function (e) {
-    var code = codeAt(e.clientX, e.clientY);
+  function onPointerDown(e) {
+    var id = "p" + e.pointerId;
+    var code = codeOfEl(e.target) || codeAtPoint(e.clientX, e.clientY);
+    dbg("pointerdown " + id + " -> " + (code || "none"));
     if (!code) return;
-    if (e.cancelable) e.preventDefault();
-    var id = "p" + e.pointerId;
-    if (ptrCode[id] !== code) {
-      if (ptrCode[id]) drop(id, ptrCode[id]);
-      ptrCode[id] = code;
-      hold(id, code);
-    }
-  }, true);
-  document.addEventListener("pointermove", function (e) {
-    var id = "p" + e.pointerId;
-    if (!ptrCode[id]) return;
-    var code = codeAt(e.clientX, e.clientY);
-    if (code !== ptrCode[id]) {
-      drop(id, ptrCode[id]);
-      if (code) { ptrCode[id] = code; hold(id, code); } else delete ptrCode[id];
-    }
-  }, true);
+    if (ptrCode[id] !== code) { ptrCode[id] = code; hold(id, code); }
+  }
   function onPointerEnd(e) {
     var id = "p" + e.pointerId;
-    if (ptrCode[id]) { drop(id, ptrCode[id]); delete ptrCode[id]; }
+    if (ptrCode[id]) { dbg("pointerend " + id); drop(id, ptrCode[id]); delete ptrCode[id]; }
   }
-  document.addEventListener("pointerup", onPointerEnd, true);
-  document.addEventListener("pointercancel", onPointerEnd, true);
+  var POPT = { passive: true, capture: true };
+  document.addEventListener("pointerdown", onPointerDown, POPT);
+  document.addEventListener("pointerup", onPointerEnd, POPT);
+  document.addEventListener("pointercancel", onPointerEnd, POPT);
 
-  /* ---- 装上：克隆掉库原来的监听器，只留上面这套 ---- */
   function boot() {
     pad = window.__dePad;
     if (!pad) return false;
@@ -903,6 +911,7 @@
       var el = document.querySelector(sel);
       if (el && el.parentNode) el.parentNode.replaceChild(el.cloneNode(true), el);
     });
+    dbg("ready");
     return true;
   }
   var tries = 0;
