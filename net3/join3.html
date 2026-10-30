@@ -235,7 +235,18 @@
           tint.textContent = "#rv{image-rendering:pixelated!important;}";
           document.head.appendChild(tint);
         } catch (e3) {}
+        /* 自动播放：这条流没有音轨，但 Chrome 仍可能按「非静音」把 play() 拒掉，
+         * 表现是好友端一片黑、统计里 decoded 一直涨而 currentTime 停在 0.00。
+         * muted 之后 Chrome 允许自动播放；再定时补一次防首次竞态。 */
+        try { v.muted = true; v.setAttribute("muted", ""); } catch (e6) {}
         v.play().catch(() => {});
+        try {
+          const kick = setInterval(() => {
+            if (v.paused && v.readyState >= 2) v.play().catch(() => {});
+            if (!v.paused && v.currentTime > 0) clearInterval(kick);
+          }, 700);
+          setTimeout(() => clearInterval(kick), 25000);
+        } catch (e7) {}
         /* 面板里显示对端真实画质：收到多少像素、多少码率 */
         try {
           const statsTimer = setInterval(async () => {
