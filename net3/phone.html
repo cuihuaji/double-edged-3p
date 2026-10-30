@@ -293,71 +293,15 @@
         conn.send({ evt: e.type, x: e.clientX, y: e.clientY, button: e.button, buttons: e.buttons });
       }
     }
-    /* ===== 手机手柄：用 ruffle-touch 现成的虚拟手柄 =====
-     * 键位用 P2 的 W/A/S/D + G(攻击) + H(跳)。它内部是 8 向 D-pad：
-     * 手指在十字区里按角度同时给两个方向，所以能斜跳/斜砍。
-     * 库把按键派发成真实 KeyboardEvent 到 window，这里接住转成报文发给房主。 */
-    function sendRaw(o) {
+    /* 手柄要发报文时统一走这里（连接建立前返回 false，按键直接丢弃） */
+    window.__deSend = function (o) {
       const all = (peer && peer.connections) || {};
       for (const k in all) {
         const c = all[k] && all[k][0];
-        if (c && c.open) { try { c.send(o); return true; } catch (e) {} }
+        if (c && c.open) { try { c.send(o); return true; } catch (err2) {} }
       }
       return false;
-    }
-    const P2KEYS = { KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68, KeyG: 71, KeyH: 72 };
-    window.addEventListener("keydown", (e) => {
-      if (P2KEYS[e.code]) sendRaw({ evt: "keydown", code: e.code, keyCode: P2KEYS[e.code], key: "" });
-    }, true);
-    window.addEventListener("keyup", (e) => {
-      if (P2KEYS[e.code]) sendRaw({ evt: "keyup", code: e.code, keyCode: P2KEYS[e.code], key: "" });
-    }, true);
-
-    function bootPad() {
-      if (!window.RuffleTouch) return;
-      const pad = new window.RuffleTouch({ container: document.body });
-      /* 只留 6 个键：上下左右 + 攻 + 跳（另外两颗动作键和 SWF 工具按钮用不上） */
-      pad.settings.mappingPreset = "custom";
-      pad.settings.customMappings = {
-        up:    { key: "w", code: "KeyW", keyCode: 87, label: "W" },
-        down:  { key: "s", code: "KeyS", keyCode: 83, label: "S" },
-        left:  { key: "a", code: "KeyA", keyCode: 65, label: "A" },
-        right: { key: "d", code: "KeyD", keyCode: 68, label: "D" },
-        z:     { key: "g", code: "KeyG", keyCode: 71, label: "攻" },
-        x:     { key: "h", code: "KeyH", keyCode: 72, label: "跳" },
-        space: { key: "g", code: "KeyG", keyCode: 71, label: "攻" },
-        enter: { key: "h", code: "KeyH", keyCode: 72, label: "跳" }
-      };
-      pad.keyDefinitions = pad.getEffectiveMappings();
-      pad.saveSettings();
-      pad.updateButtonLabels();
-      try {
-        if (pad.openSwfBtn) pad.openSwfBtn.style.display = "none";
-        if (pad.downloadBtn) pad.downloadBtn.style.display = "none";
-      } catch (e) {}
-      const st = document.createElement("style");
-      st.textContent = ".action-space,.action-enter{display:none !important}" +
-        "#rv{position:fixed !important;left:0 !important;top:0 !important;width:100vw !important;" +
-        "height:100vh !important;object-fit:contain !important;background:#000}";
-      document.head.appendChild(st);
-      /* 空白处轻点 = 菜单点击（换算成画面 0..1 坐标发给房主） */
-      document.addEventListener("pointerup", (e) => {
-        const el = e.target;
-        if (el && el.closest && el.closest("button, .ruffle-touch-dpad, .ruffle-touch-actions, .ruffle-touch-toolbar, .ruffle-touch-drawer")) return;
-        const v = document.getElementById("rv");
-        if (!v) return;
-        const r = v.getBoundingClientRect();
-        const A = 880 / 640;
-        let w = r.width, h = r.height, l = r.left, t = r.top;
-        if (w / h > A) { const w2 = h * A; l += (w - w2) / 2; w = w2; }
-        else { const h2 = w / A; t += (h - h2) / 2; h = h2; }
-        const fx = (e.clientX - l) / w, fy = (e.clientY - t) / h;
-        if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) sendRaw({ sys: "tap", fx: fx, fy: fy });
-      }, { passive: true });
-      window.__dePad = pad;
-      document.body.classList.add("de-touch");
-    }    if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bootPad); else bootPad();
-
+    };
     document.addEventListener("keydown", fwdInput, true);
     document.addEventListener("keyup", fwdInput, true);
     document.addEventListener("mousedown", fwdInput, true);
@@ -524,5 +468,67 @@
   })();
 </script>
 <script src="frz.js?v=9"></script>
+<script>
+/* ===== 手机手柄：ruffle-touch（M5Devs）现成的虚拟手柄 =====
+ * 8 向 D-pad：手指在十字区里按角度同时给两个方向，能斜跳斜砍；
+ * 动作键映射到本作 P2 的真实键位 G(攻击)/H(跳)。库把按键派发成真实
+ * KeyboardEvent 到 window，这里接住转成报文发给房主。
+ * 页面一打开就挂上，连上房主之前按键直接丢弃，不会报错。 */
+(function () {
+  var P2 = { KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68, KeyG: 71, KeyH: 72 };
+  function send(o) { return window.__deSend ? window.__deSend(o) : false; }
+  window.addEventListener("keydown", function (e) {
+    if (P2[e.code]) send({ evt: "keydown", code: e.code, keyCode: P2[e.code], key: "" });
+  }, true);
+  window.addEventListener("keyup", function (e) {
+    if (P2[e.code]) send({ evt: "keyup", code: e.code, keyCode: P2[e.code], key: "" });
+  }, true);
+
+  function boot() {
+    if (!window.RuffleTouch || window.__dePad) return;
+    var pad = new window.RuffleTouch({ container: document.body });
+    pad.settings.mappingPreset = "custom";
+    pad.settings.customMappings = {
+      up:    { key: "w", code: "KeyW", keyCode: 87, label: "W" },
+      down:  { key: "s", code: "KeyS", keyCode: 83, label: "S" },
+      left:  { key: "a", code: "KeyA", keyCode: 65, label: "A" },
+      right: { key: "d", code: "KeyD", keyCode: 68, label: "D" },
+      z:     { key: "g", code: "KeyG", keyCode: 71, label: "攻" },
+      x:     { key: "h", code: "KeyH", keyCode: 72, label: "跳" },
+      space: { key: "g", code: "KeyG", keyCode: 71, label: "攻" },
+      enter: { key: "h", code: "KeyH", keyCode: 72, label: "跳" }
+    };
+    pad.keyDefinitions = pad.getEffectiveMappings();
+    pad.saveSettings();
+    pad.updateButtonLabels();
+    try {
+      if (pad.openSwfBtn) pad.openSwfBtn.style.display = "none";
+      if (pad.downloadBtn) pad.downloadBtn.style.display = "none";
+    } catch (e) {}
+    var st = document.createElement("style");
+    st.textContent = ".action-space,.action-enter{display:none !important}" +
+      "#rv{position:fixed !important;left:0 !important;top:0 !important;width:100vw !important;" +
+      "height:100vh !important;object-fit:contain !important;background:#000}";
+    document.head.appendChild(st);
+    /* 空白处轻点 = 菜单点击：换算成画面 0..1 坐标，房主端按比例点下去 */
+    document.addEventListener("pointerup", function (e) {
+      var el = e.target;
+      if (el && el.closest && el.closest("button, input, .ruffle-touch-dpad, .ruffle-touch-actions, .ruffle-touch-toolbar, .ruffle-touch-drawer")) return;
+      var v = document.getElementById("rv");
+      if (!v || !v.getBoundingClientRect().width) return;
+      var r = v.getBoundingClientRect(), A = 880 / 640;
+      var w = r.width, h = r.height, l = r.left, t = r.top;
+      if (w / h > A) { var w2 = h * A; l += (w - w2) / 2; w = w2; }
+      else { var h2 = w / A; t += (h - h2) / 2; h = h2; }
+      var fx = (e.clientX - l) / w, fy = (e.clientY - t) / h;
+      if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) send({ sys: "tap", fx: fx, fy: fy });
+    }, { passive: true });
+    window.__dePad = pad;
+    document.body.classList.add("de-touch");
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
+  else boot();
+})();
+</script>
 </body>
 </html>
