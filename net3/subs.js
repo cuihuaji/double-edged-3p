@@ -238,17 +238,17 @@ window.DE_UI_N = (function () {
 
 /* 一行字幕：优先台词，其次界面词；纯数字忽略 */
 window.DE_TRANSLATE = function (texts) {
-  var out = [];
+  var dialogue = [], ui = [];
   for (var i = 0; i < texts.length; i++) {
     var raw = texts[i];
     if (/^[\d\s:,.%+\-]+$/.test(raw)) continue;
     var zh = window.DE_MATCH(raw);
-    if (!zh) {
-      var k = window.DE_NORM(raw);
-      if (window.DE_UI_N[k]) zh = window.DE_UI_N[k];
-    }
-    if (!zh) continue;
-    if (out.indexOf(zh) < 0) out.push(zh);
+    if (zh) { if (dialogue.indexOf(zh) < 0) dialogue.push(zh); continue; }
+    var k = window.DE_NORM(raw);
+    var u = window.DE_UI_N[k];
+    if (u && ui.indexOf(u) < 0) ui.push(u);
   }
-  return out.join("　");
+  /* 台词优先：气泡在说话时只显示台词，别把 REDEFINE KEYS 这类界面词混进字幕 */
+  var pick = dialogue.length ? dialogue : ui;
+  return pick.join("　");
 };
