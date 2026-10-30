@@ -796,7 +796,10 @@
     });
   }
 
+  var sawTouch = false;
+
   function onTouch(e) {
+    sawTouch = true;
     if (e.touches && e.touches.length) {
       for (var i = 0; i < e.touches.length; i++) {
         var hit = codeAt(e.touches[i].clientX, e.touches[i].clientY);
@@ -819,18 +822,20 @@
     document.addEventListener('touchmove', onTouch, opts);
     document.addEventListener('touchend', onTouch, opts);
     document.addEventListener('touchcancel', onTouch, opts);
-    /* 桌面上用鼠标也能按 */
-    document.addEventListener('pointerdown', function (e) {
-      if (e.pointerType === 'touch') return;
-      var hit = codeAt(e.clientX, e.clientY);
-      if (hit) { e.preventDefault(); setDown(hit.code, hit.el, true); }
-    }, true);
-    document.addEventListener('pointerup', function (e) {
-      if (e.pointerType === 'touch') return;
+    /* 兜底通道：有的环境只派发 pointer 不派发 touch。
+       一旦见到过真 touch 就整体让位，避免同一次按压发两遍键。 */
+    function releaseAll() {
       ['KeyG', 'KeyH'].forEach(function (code) {
         setDown(code, document.querySelector('.action-' + (code === 'KeyG' ? 'z' : 'x')), false);
       });
+    }
+    document.addEventListener('pointerdown', function (e) {
+      if (sawTouch) return;
+      var hit = codeAt(e.clientX, e.clientY);
+      if (hit) { if (e.cancelable) e.preventDefault(); setDown(hit.code, hit.el, true); }
     }, true);
+    document.addEventListener('pointerup', function () { if (!sawTouch) releaseAll(); }, true);
+    document.addEventListener('pointercancel', function () { if (!sawTouch) releaseAll(); }, true);
     return true;
   }
 
