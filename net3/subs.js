@@ -108,8 +108,10 @@ function dePlaceholder(s) {
 window.DE_collect = function (w) {
   try {
     var pg = w.AVMPlayerPoki && w.AVMPlayerPoki._avmHandler && w.AVMPlayerPoki._avmHandler._playerglobal;
-    var root = pg && pg._stage && pg._stage._stage && pg._stage._stage.getChildAt(0);
-    if (!root) return [];
+    var st = pg && pg._stage && pg._stage._stage;
+    if (!st) return [];
+    /* 从舞台本身开始走，而不是从第 0 个子节点：气泡可能被加在舞台而不是 root 里 */
+    var root = st;
     var out = [], seen = new Set();
     (function walk(o, d, effAlpha, vis) {
       if (!o || d > 10 || seen.has(o)) return;
