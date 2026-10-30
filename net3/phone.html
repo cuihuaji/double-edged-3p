@@ -129,7 +129,10 @@
   /* 用种子启动游戏 */
   function startGame(seed) {
     if (lock) { try { lock.stop(); } catch (e) {} }
-    iframe.src = "../html5/play3p.html?seed=" + (seed >>> 0) + "&cb=" + Date.now() + "&nolock=1" + "&cb=" + Date.now();
+    /* 手机是纯手柄页：不加载游戏副本。
+     * 原来会先跑一整份 AwayFL（没连上就一直跑），手机上白烧 CPU 和电；画面只认房主推来的视频。 */
+    try { iframe.src = "about:blank"; } catch (e) {}
+    iframe.style.display = "none";
     lock = new Lock({
       side: "p2", seed: seed >>> 0, frame: iframe,
       log: (m) => console.log("[lock]", m),
