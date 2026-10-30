@@ -1,0 +1,689 @@
+/* RuffleTouch Styles */
+
+/* Mobile polish & base styles for overlay elements */
+.ruffle-touch-overlay,
+.ruffle-touch-toolbar-btn,
+.ruffle-touch-btn,
+.ruffle-touch-drawer {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  -khtml-user-select: none;
+  -moz-user-select: none;
+  -ms-user-select: none;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.ruffle-touch-overlay,
+.ruffle-touch-toolbar-btn,
+.ruffle-touch-btn,
+.ruffle-touch-dpad {
+  touch-action: none;
+}
+
+/* Floating Toolbar (Top Right Corner) */
+.ruffle-touch-toolbar {
+  position: fixed;
+  top: max(16px, env(safe-area-inset-top));
+  right: max(16px, env(safe-area-inset-right));
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: clamp(8px, 2vw, 12px);
+}
+
+.ruffle-touch-toolbar-btn {
+  width: clamp(40px, 8vw, 48px);
+  height: clamp(40px, 8vw, 48px);
+  border-radius: 50%;
+  background: rgba(20, 20, 25, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  color: #ffffff;
+  font-size: clamp(18px, 4vw, 22px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+  transition: transform 0.15s ease, background 0.15s ease;
+  outline: none;
+}
+
+.ruffle-touch-toolbar-btn:active {
+  transform: scale(0.92);
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Gamepad Overlay Container - Pushed to safe margins / letterbox areas */
+.ruffle-touch-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 100;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  padding-top: max(16px, env(safe-area-inset-top));
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+  padding-left: max(16px, env(safe-area-inset-left));
+  padding-right: max(16px, env(safe-area-inset-right));
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.ruffle-touch-overlay.ruffle-touch-hidden {
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none !important;
+}
+
+.ruffle-touch-overlay.ruffle-touch-hidden * {
+  pointer-events: none !important;
+}
+
+/* Controls Base Button - Glassmorphism High Contrast */
+.ruffle-touch-btn {
+  pointer-events: auto;
+  outline: none;
+  background: rgba(20, 20, 25, 0.75);
+  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-weight: bold;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.1s ease, transform 0.1s ease, border-color 0.1s ease;
+}
+
+.ruffle-touch-btn:active,
+.ruffle-touch-btn.active {
+  background: rgba(88, 166, 255, 0.45);
+  border-color: rgba(255, 255, 255, 0.8);
+  transform: scale(0.94);
+}
+
+/* 8-Way D-PAD Container (Bottom-Left) */
+.ruffle-touch-dpad {
+  position: relative;
+  width: clamp(130px, 25vw, 170px);
+  height: clamp(130px, 25vw, 170px);
+  pointer-events: auto;
+  transition: transform 0.15s ease;
+}
+
+.ruffle-touch-dpad .dpad-btn {
+  position: absolute;
+  width: 34%;
+  height: 34%;
+  font-size: clamp(16px, 3.5vw, 22px);
+  border-radius: 8px;
+}
+
+.dpad-up {
+  top: 0;
+  left: 33%;
+  border-top-left-radius: 12px;
+  border-top-right-radius: 12px;
+}
+
+.dpad-down {
+  bottom: 0;
+  left: 33%;
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+.dpad-left {
+  top: 33%;
+  left: 0;
+  border-top-left-radius: 12px;
+  border-bottom-left-radius: 12px;
+}
+
+.dpad-right {
+  top: 33%;
+  right: 0;
+  border-top-right-radius: 12px;
+  border-bottom-right-radius: 12px;
+}
+
+/* Diagonal Visual Hit Zones & Highlights */
+.dpad-diag {
+  position: absolute;
+  width: 32%;
+  height: 32%;
+  border-radius: 8px;
+  pointer-events: none;
+  transition: background 0.1s ease;
+  background: transparent;
+  z-index: 2;
+}
+
+.dpad-diag-ul { top: 2%; left: 2%; }
+.dpad-diag-ur { top: 2%; right: 2%; }
+.dpad-diag-dl { bottom: 2%; left: 2%; }
+.dpad-diag-dr { bottom: 2%; right: 2%; }
+
+.dpad-diag.active {
+  background: rgba(88, 166, 255, 0.25);
+  border: 1px dashed rgba(255, 255, 255, 0.5);
+}
+
+.dpad-center {
+  position: absolute;
+  top: 33%;
+  left: 33%;
+  width: 34%;
+  height: 34%;
+  background: rgba(20, 20, 25, 0.5);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  pointer-events: none;
+  border-radius: 6px;
+}
+
+/* Action Buttons Container (Bottom-Right) */
+.ruffle-touch-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: clamp(10px, 2vh, 18px);
+  pointer-events: auto;
+  transition: transform 0.15s ease;
+}
+
+.action-group {
+  display: flex;
+  gap: clamp(8px, 1.8vw, 14px);
+  align-items: center;
+}
+
+/* Action Buttons (Z, X) */
+.action-z, .action-x {
+  width: clamp(48px, 10vw, 62px);
+  height: clamp(48px, 10vw, 62px);
+  border-radius: 50%;
+  font-size: clamp(18px, 3.8vw, 24px);
+}
+
+/* Secondary Action Buttons (Space, Enter) */
+.action-space, .action-enter {
+  height: clamp(34px, 6vh, 42px);
+  padding: 0 clamp(10px, 2vw, 18px);
+  border-radius: 20px;
+  font-size: clamp(11px, 2.2vw, 13px);
+  letter-spacing: 0.5px;
+}
+
+/* Settings Drawer Backdrop */
+.ruffle-touch-drawer-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 10001;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.ruffle-touch-drawer-backdrop.open {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Sliding Settings Drawer */
+.ruffle-touch-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 320px;
+  max-width: 85vw;
+  height: 100vh;
+  background: rgba(18, 22, 28, 0.88);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-left: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.7);
+  z-index: 10002;
+  transform: translateX(100%);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  color: #f0f4f8;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overflow-y: auto;
+}
+
+.ruffle-touch-drawer.open {
+  transform: translateX(0);
+}
+
+/* Drawer Header */
+.ruffle-touch-drawer-header {
+  padding: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.ruffle-touch-drawer-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ruffle-touch-drawer-close {
+  background: rgba(255, 255, 255, 0.1);
+  border: none;
+  color: #ffffff;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease;
+}
+
+.ruffle-touch-drawer-close:hover,
+.ruffle-touch-drawer-close:active {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Drawer Content */
+.ruffle-touch-drawer-content {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.ruffle-touch-settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ruffle-touch-settings-section h4 {
+  margin: 0;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: #8b949e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 6px;
+}
+
+.ruffle-touch-setting-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-toggle-group {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.setting-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.9rem;
+}
+
+.setting-value {
+  color: #58a6ff;
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+/* Range Slider */
+.ruffle-touch-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.2);
+  outline: none;
+}
+
+.ruffle-touch-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #58a6ff;
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.5);
+  border: 2px solid #ffffff;
+}
+
+.ruffle-touch-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #58a6ff;
+  cursor: pointer;
+  box-shadow: 0 0 8px rgba(88, 166, 255, 0.5);
+  border: 2px solid #ffffff;
+}
+
+/* Toggle Switch */
+.ruffle-touch-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.ruffle-touch-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.switch-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.2);
+  transition: .2s;
+  border-radius: 24px;
+}
+
+.switch-slider:before {
+  position: absolute;
+  content: "";
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  transition: .2s;
+  border-radius: 50%;
+}
+
+.ruffle-touch-switch input:checked + .switch-slider {
+  background-color: #238636;
+}
+
+.ruffle-touch-switch input:checked + .switch-slider:before {
+  transform: translateX(20px);
+}
+
+/* Action Buttons in Settings Drawer */
+.ruffle-touch-btn-action {
+  width: 100%;
+  padding: 10px 14px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.ruffle-touch-btn-action:hover,
+.ruffle-touch-btn-action:active {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.ruffle-touch-save-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ruffle-touch-btn-action.btn-danger {
+  background: rgba(218, 54, 51, 0.2);
+  border-color: rgba(218, 54, 51, 0.5);
+  color: #f85149;
+}
+
+.ruffle-touch-btn-action.btn-danger:hover,
+.ruffle-touch-btn-action.btn-danger:active {
+  background: rgba(218, 54, 51, 0.4);
+  border-color: rgba(218, 54, 51, 0.8);
+}
+
+/* Landscape / Widescreen Adjustments: Push controls outwards into letterbox padding */
+@media (min-aspect-ratio: 16/9) {
+  .ruffle-touch-overlay {
+    padding-left: clamp(16px, 4vw, 40px);
+    padding-right: clamp(16px, 4vw, 40px);
+  }
+}
+
+/* Ultra Small Screens Responsive Scaling */
+@media (max-width: 480px) {
+  .ruffle-touch-overlay {
+    padding: 10px;
+  }
+
+  .ruffle-touch-drawer {
+    width: 100vw;
+    max-width: 100vw;
+  }
+}
+
+/* Floating Mode Switcher Toast Indicator */
+.ruffle-touch-toast {
+  position: fixed;
+  top: max(72px, calc(env(safe-area-inset-top) + 60px));
+  left: 50%;
+  transform: translateX(-50%) translateY(-20px);
+  background: rgba(18, 22, 28, 0.92);
+  border: 1px solid rgba(88, 166, 255, 0.4);
+  color: #f0f4f8;
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 10005;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.ruffle-touch-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Select Dropdowns in Settings Drawer */
+.ruffle-touch-select {
+  width: 100%;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.85rem;
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.ruffle-touch-select:focus,
+.ruffle-touch-select:hover {
+  border-color: #58a6ff;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.ruffle-touch-select option {
+  background: #161b22;
+  color: #f0f4f8;
+}
+
+.ruffle-touch-select.select-sm {
+  padding: 4px 8px;
+  font-size: 0.8rem;
+  width: auto;
+  max-width: 150px;
+}
+
+/* Key Mapping Grid in Drawer */
+.ruffle-touch-mapping-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.mapping-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.06);
+}
+
+.mapping-label {
+  font-size: 0.85rem;
+  color: #c9d1d9;
+}
+
+
+/* Download / Archival Button Styles */
+.ruffle-touch-download-swf {
+  color: #3fb950;
+  border-color: rgba(63, 185, 80, 0.5);
+}
+
+.ruffle-touch-download-swf:hover {
+  background: rgba(63, 185, 80, 0.2);
+  border-color: rgba(63, 185, 80, 0.8);
+}
+
+/* Virtual Gaming Keyboard Dock */
+.ruffle-touch-keyboard {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+  z-index: 10002;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(3px, 1vh, 6px);
+  padding: clamp(6px, 1.5vh, 12px) clamp(4px, 1vw, 12px);
+  background: rgba(20, 20, 25, 0.92);
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+  box-sizing: border-box;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+
+.ruffle-touch-keyboard.ruffle-touch-hidden {
+  display: none !important;
+}
+
+.keyboard-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: clamp(3px, 0.8vw, 6px);
+  width: 100%;
+}
+
+.keyboard-key {
+  pointer-events: auto;
+  flex: 1;
+  min-width: 0;
+  height: clamp(32px, 6vh, 44px);
+  background: rgba(45, 50, 60, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  color: #f0f4f8;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: clamp(10px, 2.2vw, 15px);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: background 0.1s ease, transform 0.08s ease, border-color 0.1s ease;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.keyboard-key:active,
+.keyboard-key.active {
+  background: rgba(88, 166, 255, 0.5);
+  border-color: rgba(255, 255, 255, 0.8);
+  transform: scale(0.92);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* Flex sizing for special keys */
+.keyboard-key.key-sm {
+  flex: 0.8;
+}
+
+.keyboard-key.key-backspace {
+  flex: 1.4;
+}
+
+.keyboard-key.key-tab {
+  flex: 1.3;
+}
+
+.keyboard-key.key-caps {
+  flex: 1.4;
+}
+
+.keyboard-key.key-enter {
+  flex: 1.6;
+}
+
+.keyboard-key.key-shift {
+  flex: 1.7;
+}
+
+.keyboard-key.key-ctrl {
+  flex: 1.2;
+}
+
+.keyboard-key.key-space {
+  flex: 3.5;
+}
