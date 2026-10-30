@@ -530,5 +530,36 @@
   else boot();
 })();
 </script>
+<style>
+  /* 手机页不要桌面那套调试叠层：左下角的监视条正好压在 ▼ 上 */
+  #frz, #diag-root { display: none !important; }
+  #de-status { position: fixed; left: 50%; top: max(8px, env(safe-area-inset-top)); transform: translateX(-50%);
+    z-index: 10001; padding: 5px 12px; border-radius: 999px; background: rgba(8,12,18,.72);
+    color: #dfe8f2; font: 12px/1.3 'Microsoft YaHei', system-ui, sans-serif; white-space: nowrap;
+    border: 1px solid rgba(120,190,255,.35); pointer-events: none; transition: background .2s linear; }
+  #de-status.ok { background: rgba(24,72,40,.82); border-color: rgba(120,230,160,.5); }
+</style>
+<div id="de-status">未连接</div>
+<script>
+  /* 顶部状态条：直接镜像页面自己的提示文字，不另造一套连接逻辑 */
+  (function () {
+    var pill = document.getElementById("de-status");
+    var hint = document.getElementById("room-hint");
+    function set(txt, ok) {
+      if (!pill || !txt) return;
+      pill.textContent = txt;
+      pill.className = ok ? "ok" : "";
+    }
+    if (hint) {
+      set(hint.textContent, false);
+      new MutationObserver(function () { set(hint.textContent, /已接入|已连接/.test(hint.textContent)); })
+        .observe(hint, { childList: true, characterData: true, subtree: true });
+    }
+    setInterval(function () {
+      var v = document.getElementById("rv");
+      if (v && v.currentTime > 0) set("已接入房主画面 · P2 手柄", true);
+    }, 1200);
+  })();
+</script>
 </body>
 </html>
