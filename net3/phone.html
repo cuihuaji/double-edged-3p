@@ -569,5 +569,60 @@
     }, 1200);
   })();
 </script>
+<style>
+  #de-join { position: fixed; inset: 0; z-index: 10002; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 35%, #16222f 0%, #080b10 75%);
+    font-family: "Microsoft YaHei", system-ui, sans-serif; padding: 18px; }
+  #de-join.hide { display: none; }
+  #de-join .card { width: 100%; max-width: 420px; text-align: center; }
+  #de-join .t { color: #e8eef6; font-size: 20px; font-weight: 600; letter-spacing: 2px; }
+  #de-join .s { color: #8fa3b8; font-size: 12.5px; line-height: 1.8; margin: 10px 0 18px; }
+  #de-join input { width: 100%; padding: 15px 14px; font-size: 18px; letter-spacing: 2px; text-align: center;
+    background: #16202b; border: 1px solid #35485c; border-radius: 10px; color: #e8eef6;
+    font-family: Consolas, monospace; outline: none; }
+  #de-join input:focus { border-color: #6fd3ff; }
+  #de-join button { width: 100%; margin-top: 12px; padding: 15px; font-size: 17px; font-weight: 600; letter-spacing: 2px;
+    background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; border: 0; border-radius: 10px; }
+  #de-join .h { margin-top: 14px; color: #7b8fa3; font-size: 12px; line-height: 1.8; }
+</style>
+<div id="de-join">
+  <div class="card">
+    <div class="t">绝地双刃 · 手机手柄</div>
+    <div class="s">向房主要房间号（de 开头）。加入后手机当 P2，画面同步显示。</div>
+    <input id="de-join-input" placeholder="房间号" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <button id="de-join-btn">加入房间</button>
+    <div class="h">左手方向 · 右手 攻 / 跳 · 同按＝必杀</div>
+  </div>
+</div>
+<script>
+  /* 手机页自己也能收房号：带 ?room= 直接进，不带就出这个框 */
+  (function () {
+    var ov = document.getElementById("de-join");
+    var inp = document.getElementById("de-join-input");
+    var btn = document.getElementById("de-join-btn");
+    function join(code) {
+      var r = document.getElementById("room"), b = document.getElementById("btn-room");
+      if (!r || !b) return false;
+      r.value = code;
+      b.click();
+      ov.className = "hide";
+      return true;
+    }
+    function submit() {
+      var c = (inp.value || "").trim().toLowerCase().replace(/\s+/g, "");
+      if (!c) { inp.focus(); return; }
+      if (!/^de/.test(c)) { inp.style.borderColor = "#e2725b"; inp.focus(); return; }
+      join(c);
+    }
+    if (btn) btn.addEventListener("click", submit);
+    if (inp) {
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+      inp.addEventListener("input", function () { inp.style.borderColor = "#35485c"; });
+    }
+    var m = /[?&]room=([^&]+)/.exec(location.search);
+    if (m) { try { join(decodeURIComponent(m[1])); } catch (e) {} }
+    else setTimeout(function () { if (inp) inp.focus(); }, 300);
+  })();
+</script>
 </body>
 </html>
