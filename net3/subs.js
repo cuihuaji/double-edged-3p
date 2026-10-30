@@ -289,7 +289,7 @@ window.DE_MATCH = function (raw) {
       /* 正向（打字机）：屏幕上只是词条的前半句 */
       if (n.length >= 4 && k.indexOf(n) === 0) {
         if (n.length > bestLen) { best = window.DE_SUBS[i][1]; bestLen = n.length; }
-      } else if (n.length >= 5 && n.indexOf(k) === 0) {
+      } else if (n.length >= 5 && n.indexOf(k) === 0 && k.length * 10 >= n.length * 7) {
         /* 反向：气泡多带了尾巴或标点（HISSS 与 HISSSS 这类），
          * 取最长的那个词条做近似，避免短词误伤 */
         if (k.length > revLen) { revBest = window.DE_SUBS[i][1]; revLen = k.length; }
