@@ -581,6 +581,31 @@
     rot.textContent = "把手机横过来 ↻ 画面更大";
     document.body.appendChild(rot);
 
+    /* ?metrics=1：把各控件矩形回传给父页，用来在任意尺寸下核对布局（比如横屏适配） */
+    if (/[?&]metrics=1/.test(location.search)) {
+      setInterval(function () {
+        var rc = function (s) {
+          var e = document.querySelector(s);
+          if (!e) return null;
+          var b = e.getBoundingClientRect();
+          return [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)];
+        };
+        try {
+          parent.postMessage({
+            deMetrics: 1,
+            vp: [innerWidth, innerHeight],
+            dpad: rc(".ruffle-touch-dpad"),
+            az: rc(".action-z"),
+            ax: rc(".action-x"),
+            status: rc("#de-status"),
+            rotate: (function () { var e = document.getElementById("de-rotate"); return e ? getComputedStyle(e).display : "absent"; })(),
+            scrollH: document.documentElement.scrollHeight,
+            haptic: String(pad.triggerHaptic).replace(/\s+/g, " ").slice(0, 70)
+          }, "*");
+        } catch (e) {}
+      }, 400);
+    }
+
     window.__dePad = pad;
     document.body.classList.add("de-touch");
   }
