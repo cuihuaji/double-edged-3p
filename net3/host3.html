@@ -105,7 +105,7 @@
 <script src="../net2/common.js"></script>
 <script src="peerjs.min.js"></script>
 <script src="diag.js?v=3"></script>
-<script src="subs.js?v=8"></script>
+<script src="subs.js?v=9"></script>
 <script src="lock.js?v=8"></script>
 <script>
 (function () {
@@ -310,6 +310,8 @@
   }
   setInterval(deSample, 300);
   try { window.__deSample = deSample; } catch (e) {}
+  /* 一句中文都没出来的原文都记在这里：控制台敲 __subsMiss() 就能整份拷出来 */
+  window.__subsMiss = function () { return Object.keys(window.__deMiss || {}); };
 
   /* ---------- PeerJS：短房号 ---------- */
   function bindConn(conn) {

@@ -4,59 +4,167 @@
  * 所以表里的写法不需要和源代码逐字一致。
  */
 window.DE_SUBS = [
-  ["HUH? SOUND THE^ALARM, IT'S THE^ENEMY!\"", "嗯？拉响警报——是敌袭！"],
-  ["WATCH OUT FOR HIS^SPECIAL ATTACK...", "小心他的必杀技……"],
-  ["YOU DON'T WANT^TO LOSE YOUR^SWORD!", "可别把剑弄丢了！"],
-  ["PRESS BOTH JUMP^AND ATTACK TO DO^YOUR SPECIAL", "跳跃和攻击同时按，放出必杀"],
-  ["CATCH ME IF YOU^CAN!", "来抓我呀——"],
-  ["ME IS GONNA^BREAK YOU!\"", "我要把你捏碎！"],
-  ["CHECK OUT THIS^AXE MY WIFE GAVE ME", "瞧瞧这把斧头，我老婆送的"],
-  ["WHAT'S WITH^ALL THE GOLD^STATUES?\"", "这些金像是怎么回事？"],
-  ["KING MIDAS HAS^GONE MAD!", "弥达斯王疯了！"],
-  ["MY KINGDOM WILL LOOK EVEN MORE^BEAUTFUL...", "我的王国会更加金碧辉煌……"],
-  ["WE'LL HAVE TO^THROW THESE ^STATUES AT HIM!", "只能拿这些金像砸他！"],
-  ["IT'S THE ONLY^WAY!\"", "没别的办法了！"],
-  ["IT'S HIM! YOU JUST DON'T GIVE UP^DO YOU?", "又是他！你可真不死心啊？"],
-  ["WELL GET READY^FOR A PIT...STOP!\"", "那就准备掉坑……住手！"],
-  ["QUICK LETS JUMP^ON 'STRIPES' AND^LET'S GET HIM!\"", "快，跳上“花条纹”，追上去！"],
-  ["IT WOULD  BE WISE NOT TO WAKE^TALOS...", "最好别吵醒塔罗斯……"],
-  ["FROM HIS^SLUMBER!!\"", "……把他从沉睡里吵醒就完了！"],
-  ["TURN BACK YOU^FOOL", "回头吧，蠢货"],
-  ["THE COLOSSUS IS^UPON US!\"", "巨人压过来了！"],
-  ["GREAT ZEUS!!! THE^LIZARDMEN ARE^ATTACKING!\"", "宙斯在上！蜥蜴人来袭！"],
-  ["OUR TIME HASSSS^COME!!!\"", "我们的时代，来了sss！"],
-  ["SNORT SNORT!! RED MAKES ME REAL^ANGRY!!!", "哼哼！穿红衣服的真把我惹毛了！"],
-  ["MOOOOOO...VE^ASIDE BEFORE I^CHARGE YOU!!!\"", "哞——让开，不然我撞飞你！"],
-  ["ARCHERS AT THE^READY...", "弓手就位……"],
-  ["LETS LICK SOME^LIZARDS!\"", "去收拾这帮蜥蜴！"],
-  ["WE'VE GOT HIM^SURROUNDED...^GET HIM!!!\"", "包围他……上！"],
-  ["THANKS TO THE^PRIESTS OF HECATE ^THIS WAR IS WON!", "多亏赫卡忒的祭司，这一仗赢定了！"],
-  ["THE REPTILE SCUM ARE HARMLESS^CHICKENS..HA HA!!\"", "那帮爬虫就是一群软脚鸡，哈哈！"],
-  ["STAND STILL...^MY FEATHERED^FRIEND MWHAHAHA\"", "站好别动……我的羽毛朋友，哈哈哈"],
-  ["EXCUSE ME! ^HAVE YOU SEEN MY FRIENDSSSS?", "打扰一下——见过我的朋友们sss吗？"],
-  ["DID I MISSSS^SOMETHING?\"", "我错过什么好戏了？"],
-  ["DERRR...YOU MAY^GET PAST US...", "呃……你们可以过去……"],
-  ["BUT YOU HAVE NO CHANCE AGAINST^HERCULES!!!\"", "但你们绝不可能赢过赫拉克勒斯！"],
-  ["THATS RIGHT!^YOU ARE LOOKING AT THE ONE...^", "没错！你眼前的正是……"],
-  ["THE MIGHTIEST^WARRIOR OF THEM ALL...", "有史以来最强的战士……"],
-  ["CAN I GET A^ DRUMROLL^ PLEASE???...", "来点鼓声，please？"],
-  ["I................AM...............^HERCULES!!\"", "我……就是……赫拉克勒斯！"],
-  ["HAHAHA... I FOUND ^THIS LION HAMMER^...", "哈哈哈……我找到了这把狮头锤……"],
-  ["IN THE TOMB OF^KING CECROPS.^IM INVINCIBLE!!!\"", "在刻克洛普斯王的墓里。我无敌了！"],
-  ["YOU FOOL...^YOU HAVE DOOMED US ALL!!!", "蠢货……你把我们全毁了！"],
-  ["THAT CURSED^HAMMER WILL^WAKE THE UNDEAD. \"", "那把被诅咒的锤子会唤醒亡灵。"],
-  ["WE'LL SWALLOW^YOUR SOUL!^MWAHAHAHAH!\"", "我们会吞掉你的灵魂！哇哈哈哈！"],
-  ["THE GORGON HAS^HIDDEN HERSELF...", "戈耳工藏起来了……"],
-  ["DO NOT GAZE^INTO HER EYES!!\"", "千万别看她的眼睛！"],
-  ["HSSSSSSSSSSSSSS...^LOOK INTO MY^EYES MY PRETTY...", "嘶————看着我的眼睛，美人……"],
-  ["I'M SO BEAUTIFUL^YOU'LL NEVER^LOOK AT...", "我美得你再也移不开眼……"],
-  ["ANYONE ELSE^AGAIN!!!\"", "……看别人一眼！"],
-  ["HECATE!^RAISE AN ARMY^FROM THE DEAD!!", "赫卡忒！让亡者成军！"],
-  ["SO THEY MAY^DESTROY THIS^NON-BELIEVER!\"", "让他们撕碎这个不信神的人！"],
-  ["HUMAN!! JOIN US IF YOU WANT TO LIVE^MWAHAHAHAHA...\"", "凡人！想活命就加入我们，哈哈哈……"],
-  ["IMPRESSIVE^MORTAL, YOU ^MADE IT THIS FAR!", "了不起，凡人，你居然走到这里！"],
-  ["BUT YOU WILL GO^NO FURTHER,", "但到此为止了，"],
-  ["FOR YOU HAVE^ANGERED THE^BEHEMOTH!!!\"", "因为你惹怒了巨兽！"]
+  ["...ANYONE ELSE AGAIN!!!", "……再也不会多看别人一眼！！！"],
+  ["...BUT YOU HAVE NO CHANCE AGAINST HERCULES!!!", "……但在赫拉克勒斯面前你毫无胜算！！！"],
+  ["...CAN I GET A  DRUMROLL  PLEASE???...", "……能给点掌声吗？？？……"],
+  ["...FROM HIS SLUMBER!!", "……把他从沉睡中唤醒！！"],
+  ["...HAMMERTIME!", "……锤子时间！"],
+  ["...HECATE!", "……赫卡忒！"],
+  ["...IN GOLD HAHAHA!", "……全镀成金色，哈哈哈！"],
+  ["...PERSEPHONE!", "……珀耳塞福涅！"],
+  ["...THE GREATEST OF THE GREAT...", "……强者中的最强者……"],
+  ["...THE MIGHTIEST WARRIOR OF THEM ALL...", "……所有战士里最强大的……"],
+  ["...THE ONLY...", "……独一无二的……"],
+  ["[PRESS BOTH JUMP AND ATTACK TO DO YOUR SPECIAL]", "［同时按跳跃和攻击可放必杀］"],
+  ["ARCHERS AT THE READY...", "弓箭手就位……"],
+  ["ARGGGH TIGERS!!", "啊——老虎！！"],
+  ["ARRGGH TIGERS!!!", "啊啊——老虎！！！"],
+  ["ARRRGGGGH!!", "啊啊啊啊！！"],
+  ["ARRRGGGGHHH!", "啊啊啊啊啊！"],
+  ["ARRRRGH!!!", "啊啊啊啊！！！"],
+  ["ARRRRRGH!", "啊啊啊啊啊！"],
+  ["BE AFRAID!", "怕了吧！"],
+  ["BE RIGHT BACK!", "马上回来！"],
+  ["BEWARE MEDUSA", "当心美杜莎"],
+  ["BONE BREAKER!", "碎骨者！"],
+  ["BROTHER, HELP!", "兄弟，救命！"],
+  ["BUT YOU WILL GO NO FURTHER,", "但你到此为止了，"],
+  ["CANT TOUCH THIS", "你碰不到我"],
+  ["CATCH ME IF YOU CAN!", "有本事就来抓我！"],
+  ["CHECK OUT THIS AXE MY WIFE GAVE ME", "看看我老婆送我的斧头"],
+  ["CHICKEN!!", "胆小鬼！！"],
+  ["DERRR...YOU MAY GET PAST US...", "呃……你也许能过我们这一关……"],
+  ["DID I MISSSS SOMETHING?", "我是不是错过什么了？"],
+  ["DIDNT HURT!!", "不疼！！"],
+  ["DO NOT GAZE INTO HER EYES!!", "别看她的眼睛！！"],
+  ["DON'T LET THE ENEMY GET THEIR MITTS ON IT.", "别让敌人碰到它。"],
+  ["DONT LOOK", "别看"],
+  ["EXCUSE ME!  HAVE YOU SEEN MY FRIENDSSSS?", "打扰一下！见过我的朋友们吗？"],
+  ["FEAR US MORTAL", "畏惧我们吧，凡人"],
+  ["FEAR US!!!", "畏惧我们！！！"],
+  ["FOR YOU HAVE ANGERED THE BEHEMOTH!!!", "因为你惹怒了巨兽！！！"],
+  ["GET HIM!", "抓住他！"],
+  ["GETSSSS HIM...", "抓住他……"],
+  ["GIVE ME A HUG!", "抱一个！"],
+  ["GOLD!!!", "金子！！！"],
+  ["GREAT ZEUS!!! THE LIZARDMEN ARE ATTACKING!", "宙斯在上！！！蜥蜴人打过来了！"],
+  ["HAHAHA!", "哈哈！"],
+  ["HAHAHA... I FOUND  THIS LION HAMMER ...", "哈哈……我捡到了这把狮头锤……"],
+  ["HAHAHAHA!", "哈哈哈哈！"],
+  ["HAHAHAHA!!!", "哈哈哈哈！！！"],
+  ["HAHAHAHA!!!!", "哈哈哈哈！！！！"],
+  ["HAHAHAHAHA!!", "哈哈哈哈哈！！"],
+  ["HECATE! RAISE AN ARMY FROM THE DEAD!!", "赫卡忒！从死者中召起一支大军！！"],
+  ["HELP!", "救命！"],
+  ["HISSS...", "嘶……"],
+  ["HISSSS...", "嘶嘶……"],
+  ["HISSSSSS...", "嘶嘶嘶……"],
+  ["HOW DARE YOU..", "你好大的胆子……"],
+  ["HSSSSSSSSSS...", "嘶嘶嘶嘶嘶……"],
+  ["HSSSSSSSSSSSSSS... LOOK INTO MY EYES MY PRETTY...", "嘶嘶嘶嘶嘶嘶……看着我的眼睛，小可爱……"],
+  ["HUH? SOUND THE ALARM, IT'S THE ENEMY!", "嗯？拉响警报——是敌袭！"],
+  ["HUMAN!! JOIN US IF YOU WANT TO LIVE MWAHAHAHAHA...", "人类！！想活命就加入我们，哇哈哈哈……"],
+  ["HUMANS STRONG", "人类很强"],
+  ["I LOVE GOLD......", "我爱金子……"],
+  ["I................AM............... HERCULES!!", "我…………就是…………赫拉克勒斯！！"],
+  ["I'LL BE BACK...", "我会回来的……"],
+  ["I'LL CRUSH YA!", "我要碾碎你！"],
+  ["I'LLTRY IT ON YOU!", "拿你试试刀！"],
+  ["I'M SO BEAUTIFUL YOU'LL NEVER LOOK AT...", "我太美了，你再也不会看……"],
+  ["I'M TRAPPED!", "我被困住了！"],
+  ["IMPRESSIVE MORTAL, YOU  MADE IT THIS FAR!", "了不起，凡人，你竟走到这里！"],
+  ["IN THE TOMB OF KING CECROPS. IM INVINCIBLE!!!", "在刻克洛普斯王的墓里。我无敌了！！！"],
+  ["IT CAN'T BE TRUE!!", "不可能！！"],
+  ["IT WOULD  BE WISE NOT TO WAKE TALOS...", "最好别吵醒塔洛斯……"],
+  ["IT'S HIM! YOU JUST DON'T GIVE UP DO YOU?", "是他！你就是不肯放弃是吧？"],
+  ["IT'S THE ONLY WAY!", "这是唯一的办法！"],
+  ["JOIN US HUMAN!", "加入我们吧，人类！"],
+  ["JOIN US!!", "加入我们！！"],
+  ["JOIN US.. HUMAN!!", "加入我们吧……人类！！"],
+  ["KING MIDAS HAS GONE MAD!", "迈达斯王疯了！"],
+  ["LETS LICK SOME LIZARDS!", "去揍扁那些蜥蜴！"],
+  ["LUCKY SHOT", "运气好而已"],
+  ["M..M..MIDAS", "迈……迈……迈达斯"],
+  ["ME HURT!", "我受伤了！"],
+  ["ME IS GONNA BREAK YOU!", "我要把你打碎！"],
+  ["MIDAS, I FAILED", "迈达斯，我失败了"],
+  ["MOOOOOO...VE ASIDE BEFORE I CHARGE YOU!!!", "哞……让开，不然我撞死你！！！"],
+  ["MOOOOOOOOO!!!", "哞—————！！！"],
+  ["MUMMYYY!", "妈妈呀！"],
+  ["MWAHAHAH!!", "哇哈哈！！"],
+  ["MWAHAHAHA!", "哇哈哈哈！"],
+  ["MY BONES!!", "我的骨头！！"],
+  ["MY BOW!!", "我的弓！！"],
+  ["MY KINGDOM WILL LOOK EVEN MORE BEAUTFUL...", "我的王国会更美……"],
+  ["MYYYY BONES!!!!", "我的骨头啊啊！！！！"],
+  ["NO MY AXE!", "不，我的斧头！"],
+  ["NO..HECATE!", "不……赫卡忒！"],
+  ["NON-BELIEVER", "异教徒"],
+  ["NOOOO!!!", "不————！！！"],
+  ["NOOOOO!!", "不————！！"],
+  ["NOOOOOO!!!", "不—————！！！"],
+  ["NOT IN THE FACE", "别打脸"],
+  ["OUR TIME HASSSS COME!!!", "我们的时代来了！！！"],
+  ["PERISH MORTAL!", "去死吧，凡人！"],
+  ["PERISH...", "去死……"],
+  ["QUICK LETS JUMP ON 'STRIPES' AND LET'S GET HIM!", "快，跳上「条纹」的背，抓住他！"],
+  ["QUICK! PICK UP THE CHEST!", "快！把箱子抢过来！"],
+  ["READY THE PITS!", "准备陷坑！"],
+  ["REINFORCMENTS!", "援军！"],
+  ["RISE UNDEAD!!", "起来吧，亡灵！！"],
+  ["ROCKSSSS....", "石头……"],
+  ["RUN, OR HE'LL TURN US ALL TO GOLD!", "快跑，不然他把我们都变成金子！"],
+  ["RUN!", "快跑！"],
+  ["SAVE ME!", "救我！"],
+  ["SAVE ME!!!", "救我！！！"],
+  ["SEE YOU SOON!!", "回头见！！"],
+  ["SHE'S HIDEOUS!", "她真丑！"],
+  ["SHE'S SOMEWHERE AROUND HERE...", "她就在附近……"],
+  ["SNORT SNORT!!", "哼哼！！"],
+  ["SNORT SNORT!! RED MAKES ME REAL ANGRY!!!", "哼哼！！红色让我火大！！！"],
+  ["SO THEY MAY DESTROY THIS NON-BELIEVER!", "让他们毁掉这个异教徒！"],
+  ["SSSS...SOON ALL OF GREECE WILL BOW TO THE LIZARDMEN", "嘶……很快全希腊都会向蜥蜴人低头"],
+  ["SSSSUROUNDED!", "被包围了！"],
+  ["SSSTUPID HUMAN", "愚蠢的人类"],
+  ["SSSUROUNDED!", "被包围了！"],
+  ["STAND STILL... MY FEATHERED FRIEND MWHAHAHA", "别动……我的羽毛朋友，哇哈哈"],
+  ["STOP...", "停……"],
+  ["TEE HEE HEE...", "嘻嘻嘻……"],
+  ["TEHEHE!!!", "嘻嘻！！"],
+  ["THANKS TO THE PRIESTS OF HECATE  THIS WAR IS WON!", "多亏赫卡忒的祭司们，这场战争我们赢了！"],
+  ["THAT CURSED HAMMER WILL WAKE THE UNDEAD.", "那把被诅咒的锤子会唤醒亡灵。"],
+  ["THATS RIGHT! YOU ARE LOOKING AT THE ONE...", "没错！你看到的就是那位……"],
+  ["THE COLOSSUS IS UPON US!", "巨像压过来了！"],
+  ["THE GODS FAVOUR USSS, WE WILL WIN THE WAR!", "神站在我们这边，我们会赢下这场战争！"],
+  ["THE GORGON HAS HIDDEN HERSELF...", "戈耳工藏起来了……"],
+  ["THE REPTILE SCUM ARE HARMLESS CHICKENS..HA HA!!", "那些爬虫渣滓不过是无害的小鸡……哈哈！！"],
+  ["TOO MANY!", "太多了！"],
+  ["TOO STRONG!", "太强了！"],
+  ["TURN BACK YOU FOOL", "回头吧，蠢货"],
+  ["VERY AFRAID!!", "好怕怕！！"],
+  ["VICTORY IS OURSS", "胜利属于我们"],
+  ["WATCH OUT FOR HIS SPECIAL ATTACK...", "小心他的必杀……"],
+  ["WE'LL HAVE TO THROW THESE  STATUES AT HIM!", "我们得把这些雕像砸向他！"],
+  ["WE'LL SWALLOW YOUR SOUL! MWAHAHAHAH!", "我们要吞掉你的灵魂！哇哈哈哈！"],
+  ["WE'VE GOT HIM SURROUNDED... GET HIM!!!", "我们包围他了……抓住他！！！"],
+  ["WELL GET READY FOR A PIT...STOP!", "那就准备进陷坑吧……停！"],
+  ["WHAAAAA!!", "哇啊啊！！"],
+  ["WHAT'S WITH ALL THE GOLD STATUES?", "这些金雕像都是怎么回事？"],
+  ["YOU DON'T WANT TO LOSE YOUR SWORD!", "你可不想丢掉你的剑！"],
+  ["YOU FOOL... YOU HAVE DOOMED US ALL!!!", "你这蠢货……你把我们都毁了！！！"],
+  ["HELP ME!", "救命啊！"],
+  ["REDEFINE KEYS", "重新设置按键"],
+  ["PLAYER SELECT", "选择人数"],
+  ["STAGE COMPLETE!", "关卡完成！"],
+  ["GAME OVER!", "游戏结束"],
+  ["PLAYER 1 WINS!", "玩家 1 获胜！"],
+  ["LEVEL CLEAR", "过关"],
+  ["NEXT STAGE", "下一关"],
+  ["TRY AGAIN", "再试一次"],
+  ["LOADING LEVEL", "关卡加载中…"],
+  ["ENTER YOUR NAME", "输入你的名字"],
+  ["NO LEADERBOARD DATA", "暂无排行榜数据"],
+  ["SCORE SUBMITTED", "分数已提交"]
 ];
 
 (function () {
@@ -110,89 +218,63 @@ window.DE_collect = function (w) {
     var pg = w.AVMPlayerPoki && w.AVMPlayerPoki._avmHandler && w.AVMPlayerPoki._avmHandler._playerglobal;
     var st = pg && pg._stage && pg._stage._stage;
     if (!st) return [];
-    /* 舞台的 numChildren 不可靠（实测直接走 Stage 会一个节点都进不去），
-     * 所以显式枚举它的子节点作为起点；枚举不到才退回舞台本身。 */
-    var roots = [];
-    /* 实测：Stage 的 numChildren 恒为 0，而 getChildAt(0) 正常（能摸到 433 个文本节点）。
-     * 所以不信 numChildren，按索引探到 null 为止。 */
+    /* 舞台的 numChildren 实测恒为 0，getChildAt 却正常 → 按索引探到 null 为止 */
+    var roots = [], sc;
     for (var si = 0; si < 16; si++) {
-      var sc = null; try { sc = st.getChildAt(si); } catch (e) { sc = null; }
+      sc = null; try { sc = st.getChildAt(si); } catch (e) { sc = null; }
       if (!sc) break;
       roots.push(sc);
     }
     if (!roots.length) roots.push(st);
+
+    /* 关键：AwayFl 淡出时 alpha 会走成负数（实测 -0.1）。
+     * 旧写法 `alpha>=0 && alpha<=1 ? alpha : 1` 把负数当成 1，
+     * 于是「上一句气泡」永远算可见 —— 第二个气泡的字幕就被它污染/压住了。 */
+    function clampA(v) {
+      if (typeof v !== "number" || !isFinite(v)) return 1;
+      if (v <= 0) return 0;
+      if (v >= 1) return 1;
+      return v;
+    }
+
     var out = [], seen = new Set();
-    (function walk(o, d, effAlpha, vis) {
+    function walk(o, d, ea, vis) {
       if (!o || d > 10 || seen.has(o)) return;
       seen.add(o);
-      var al = 1; try { if (typeof o.alpha === "number") al = o.alpha; } catch (e) {}
-      var v = vis; try { if (o.visible === false) v = false; } catch (e) {}
-      var ea = effAlpha * (al >= 0 && al <= 1 ? al : 1);
-      var shown = v && ea > 0.05;
-
-      var pushed = false;
+      var v = vis, al = 1;
+      try { if (o.visible === false) v = false; } catch (e) {}
+      try { if (typeof o.alpha === "number") al = clampA(o.alpha); } catch (e) {}
+      var eff = ea * al;
+      var anyShown = v && eff > 0.05;
+      var speechShown = v && eff > 0.35;   /* 正在淡出的气泡不算在说话 */
       var ns; try { ns = Object.getOwnPropertyNames(o); } catch (e) { ns = []; }
-      // 1) 代码创建的文本框
+      var pushed = false;
       if (ns.indexOf("$Bg_text") >= 0) {
         var t1 = ""; try { t1 = o.$Bg_text; } catch (e) {}
-        if (typeof t1 === "string" && t1.trim() && shown) { out.push(t1.trim()); pushed = true; }
+        if (typeof t1 === "string" && t1.trim() && anyShown) { out.push(t1.trim()); pushed = true; }
       }
-      // 2) 元件里的文本框 / 气泡（直接扫 _adaptee._text，不依赖包装对象叫什么）
-      if (!pushed && ns.indexOf("_adaptee") >= 0) {
-        var t2 = deFieldText(o);
-        if (t2 && t2.trim() && shown && !dePlaceholder(t2)) out.push(t2.trim());
-      }
-      // 3) 气泡外壳上的 speechText 字段（外壳自身可能没有 _adaptee）
-      if (ns.indexOf("$BgspeechText") >= 0) {
+      if (!pushed && ns.indexOf("$BgspeechText") >= 0) {
         var f = null; try { f = o.$BgspeechText; } catch (e) {}
         var t3 = f ? deFieldText(f) : "";
-        if (t3 && t3.trim() && shown && !dePlaceholder(t3)) out.push(t3.trim());
+        if (t3 && t3.trim() && speechShown && !dePlaceholder(t3)) out.push(t3.trim());
+      } else if (!pushed && ns.indexOf("_adaptee") >= 0) {
+        var t2 = deFieldText(o);
+        if (t2 && t2.trim() && anyShown && !dePlaceholder(t2)) out.push(t2.trim());
       }
-
       var n = 0; try { n = o.numChildren || 0; } catch (e) {}
       for (var i = 0; i < n; i++) {
         var c = null; try { c = o.getChildAt(i); } catch (e) {}
-        if (c) walk(c, d + 1, ea, v);
+        if (c) walk(c, d + 1, eff, v);
       }
-    })(roots[0], 0, 1, true);
-    for (var ri = 1; ri < roots.length; ri++) (function (rz) {
-      (function walk(o, d, effAlpha, vis) {
-        if (!o || d > 10 || seen.has(o)) return;
-        seen.add(o);
-        var al = 1; try { if (typeof o.alpha === "number") al = o.alpha; } catch (e) {}
-        var v = vis; try { if (o.visible === false) v = false; } catch (e) {}
-        var ea = effAlpha * (al >= 0 && al <= 1 ? al : 1);
-        var shown = v && ea > 0.05;
-        var pushed = false;
-        var ns; try { ns = Object.getOwnPropertyNames(o); } catch (e) { ns = []; }
-        if (ns.indexOf("$Bg_text") >= 0) {
-          var t1 = ""; try { t1 = o.$Bg_text; } catch (e) {}
-          if (typeof t1 === "string" && t1.trim() && shown) { out.push(t1.trim()); pushed = true; }
-        }
-        if (!pushed && ns.indexOf("_adaptee") >= 0) {
-          var t2 = deFieldText(o);
-          if (t2 && t2.trim() && shown && !dePlaceholder(t2)) out.push(t2.trim());
-        }
-        if (ns.indexOf("$BgspeechText") >= 0) {
-          var f2 = null; try { f2 = o.$BgspeechText; } catch (e) {}
-          var t3 = f2 ? deFieldText(f2) : "";
-          if (t3 && t3.trim() && shown && !dePlaceholder(t3)) out.push(t3.trim());
-        }
-        var n2 = 0; try { n2 = o.numChildren || 0; } catch (e) {}
-        for (var i2 = 0; i2 < n2; i2++) {
-          var c2 = null; try { c2 = o.getChildAt(i2); } catch (e) {}
-          if (c2) walk(c2, d + 1, ea, v);
-        }
-      })(rz, 0, 1, true);
-    })(roots[ri]);
-    // 去重并按长度排序，长的（台词）优先
+    }
+    for (var ri = 0; ri < roots.length; ri++) walk(roots[ri], 0, 1, true);
+
     var uniq = [];
-    for (var i = 0; i < out.length; i++) if (uniq.indexOf(out[i]) < 0) uniq.push(out[i]);
+    for (var k = 0; k < out.length; k++) if (uniq.indexOf(out[k]) < 0) uniq.push(out[k]);
     uniq.sort(function (x, y) { return y.length - x.length; });
     return uniq;
   } catch (e) { return []; }
-};
-/* ---- 匹配：支持打字机（气泡逐字出现）----
+};/* ---- 匹配：支持打字机（气泡逐字出现）----
  * 屏幕上只有半句时，用「屏幕文本是词条前缀」来认定是同一条台词。 */
 window.DE_MATCH = function (raw) {
   try {
@@ -200,13 +282,20 @@ window.DE_MATCH = function (raw) {
     if (!n || n.length < 3) return "";
     var exact = window.DE_LOOKUP(raw);
     if (exact) return exact;
-    if (n.length < 4) return "";
-    var best = "", bestLen = 0;
+    var best = "", bestLen = 0, revBest = "", revLen = 0;
     for (var i = 0; i < window.DE_SUBS.length; i++) {
       var k = window.DE_NORM(window.DE_SUBS[i][0]);
-      if (k.indexOf(n) === 0 && n.length > bestLen) { best = window.DE_SUBS[i][1]; bestLen = n.length; }
+      if (!k) continue;
+      /* 正向（打字机）：屏幕上只是词条的前半句 */
+      if (n.length >= 4 && k.indexOf(n) === 0) {
+        if (n.length > bestLen) { best = window.DE_SUBS[i][1]; bestLen = n.length; }
+      } else if (n.length >= 5 && n.indexOf(k) === 0) {
+        /* 反向：气泡多带了尾巴或标点（HISSS 与 HISSSS 这类），
+         * 取最长的那个词条做近似，避免短词误伤 */
+        if (k.length > revLen) { revBest = window.DE_SUBS[i][1]; revLen = k.length; }
+      }
     }
-    return best;
+    return best || revBest;
   } catch (e) { return ""; }
 };
 
