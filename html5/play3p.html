@@ -329,6 +329,28 @@
     } catch (e2) { try { L.replayErr = (L.replayErr || 0) + 1; } catch (e3) {} }
   }
 
+  /* ---- PLAYER SELECT 的选择必须从原生点击里取 ----
+   * 实测：房主的点击由 hostClick() 直接派发 PointerEvent/MouseEvent 到 canvas，
+   * 好友的点击同样走原生派发，两者都不经过 applyEvents（那条路只有键盘）。
+   * 所以在 iframe 内部监听原生按下，命中 num_players 时按左右面板记下 1/2 人。 */
+  function noteModeFromNative(e) {
+    try {
+      var A0 = window.AVMPlayerPoki;
+      if (!A0 || !A0._avmHandler) return;
+      var r0 = A0._avmHandler._playerglobal._stage._stage.getChildAt(0);
+      if (!r0 || r0.currentLabel !== "num_players") return;
+      var c = canvas();
+      if (!c) return;
+      var rc = c.getBoundingClientRect();
+      if (!rc.width) return;
+      var fx = (e.clientX - rc.left) / rc.width;
+      window.__deMode = (fx < 0.45) ? 1 : 2;
+      window.__deModeFx = Math.round(fx * 1000) / 1000;
+    } catch (e2) {}
+  }
+  document.addEventListener("pointerdown", noteModeFromNative, true);
+  document.addEventListener("mousedown", noteModeFromNative, true);
+
   /* ---- 屏蔽原生输入：游戏只接受按帧注入的合成事件 ---- */
   function blockNative(type, flag) {
     window.addEventListener(type, function (e) {
