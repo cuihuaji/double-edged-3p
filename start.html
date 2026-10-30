@@ -2,6 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>绝地双刃 · 三人联机</title>
 <style>
   * { box-sizing: border-box; }
@@ -53,13 +54,21 @@
   #mobile-lobby .go:active { transform: translateY(1px); }
   #mobile-lobby .tip { margin-top: 14px; font-size: 12px; color: #8fa3b8; line-height: 1.9; }
   #mobile-lobby .tip b { color: #ffd166; }
-  #mobile-lobby .desk-link { display: block; margin-top: 16px; font-size: 12px; color: #6b8299; }</style>
+  #mobile-lobby .desk-link { display: block; margin-top: 16px; font-size: 12px; color: #6b8299; }
+  #mobile-lobby .host { background: linear-gradient(180deg,#2f9a63,#1f7a4c); }
+  #mobile-lobby .or { margin: 18px 0 12px; text-align: center; font-size: 12px; color: #5d6b7a; letter-spacing: 3px; }
+  #mobile-lobby .sub2 { margin-top: 10px; font-size: 12.5px; color: #8fa3b8; line-height: 1.7; }
+  #mobile-lobby .alt3 { display: block; margin-top: 10px; font-size: 12px; color: #6fd3ff; text-decoration: none; }</style>
 </head>
 <body>
 <div class="wrap">
   <div id="mobile-lobby">
     <h1>绝地双刃 · 手机手柄</h1>
-    <div class="sub">手机当 <b>P2</b> 用，画面同步显示房主的游戏。向房主要房间号填在下面。</div>
+    <div class="sub">手机也能当房主：这台手机跑游戏，好友看你的画面一起打。或者填房号加入别人的房间。</div>
+    <button class="go host" id="m-host">我来开房（这台手机当 P1）</button>
+    <div class="sub2">开好房把房号发给好友，对方在电脑或手机上打开本页面填房号就能进。<br>手机开房 = 你玩 P1（←↑↓→ 移动，攻 / 跳，两个同按 = 必杀），菜单也由你点。</div>
+    <a class="alt3" href="net3/host-phone.html?p=2" id="m-host3">要三个人？开三人房（等 2 位好友）→</a>
+    <div class="or">— 或者加入别人的房间 —</div>
     <input class="big" id="m-room" placeholder="房间号（de 开头）" autocomplete="off" autocapitalize="off" spellcheck="false" />
     <button class="go" id="m-go">加入房间</button>
     <div class="tip">
@@ -114,6 +123,8 @@
       if (!/^de/.test(c)) { inp.style.borderColor = "#e2725b"; inp.focus(); return; }
       location.href = "net3/phone.html?room=" + encodeURIComponent(c);
     }
+    var host = document.getElementById("m-host");
+    if (host) host.addEventListener("click", function () { location.href = "net3/host-phone.html?p=1"; });
     if (go) go.addEventListener("click", enter);
     if (inp) {
       inp.addEventListener("keydown", function (e) { if (e.key === "Enter") enter(); });

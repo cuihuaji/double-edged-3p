@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Double Edged · 房主</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; background: #07090c; overflow: hidden;
+    font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; color: #cfd6df; }
+
+  #wrap { position: absolute; inset: 0; }
+  /* 固定 880x640：AVM 按 iframe 内部视口决定画布像素和舞台比例，
+     两端视口一样大，命中判定用的包围盒才会一样。
+     外层用 transform 放大显示，缩放不影响内部视口。 */
+  #game {
+    position: absolute; left: 50%; top: 50%;
+    width: 880px; height: 640px; border: 0; display: block;
+    pointer-events: none; transform-origin: center center;
+    transform: translate(-50%, -50%);
+  }
+  /* 覆盖层接管鼠标，游戏本身收不到原生点击 */
+  #clicklayer { position: absolute; inset: 0; cursor: crosshair; }
+
+  #panel {
+    position: absolute; top: 14px; right: 14px; width: 330px; padding: 14px 16px;
+    background: rgba(14, 18, 24, .94); border: 1px solid #232a34; border-radius: 10px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.6); z-index: 20;
+  }
+  #panel h1 { font-size: 14px; font-weight: 600; color: #e8eef5; margin-bottom: 10px; }
+  /* 面板收起：只留右上角一个小把手，不挡画面 */
+  #panel h1 { display: flex; align-items: center; justify-content: space-between; }
+  #collapse {
+    width: auto; margin: 0; padding: 2px 8px; font-size: 11px; line-height: 1.4;
+    background: #1b2430; color: #9fb0c2; border: 1px solid #2c3846; border-radius: 6px; cursor: pointer;
+  }
+  #panel.min { width: auto; padding: 6px; border-radius: 8px; }
+  #panel.min > *:not(#handle) { display: none !important; }
+  #handle {
+    display: none; cursor: pointer; font-size: 12px; color: #9fb0c2;
+    padding: 4px 10px; user-select: none;
+  }
+  #panel.min #handle { display: block; }
+
+  .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; }
+  .k { color: #7c8794; }
+  .v { color: #cfd6df; font-variant-numeric: tabular-nums; }
+  .ok { color: #5fd08a; } .bad { color: #e0705a; }
+
+  .room {
+    margin-top: 10px; padding: 10px; text-align: center; letter-spacing: 3px;
+    font: 600 22px/1.2 Consolas, monospace; color: #9fd4ff;
+    background: #0b0f14; border: 1px dashed #2c3846; border-radius: 8px; cursor: pointer;
+  }
+  textarea {
+    width: 100%; height: 60px; margin-top: 8px; padding: 6px 8px; resize: none;
+    background: #0b0f14; color: #9fb0c2; border: 1px solid #232a34; border-radius: 6px;
+    font: 11px/1.4 Consolas, monospace; word-break: break-all;
+  }
+  button {
+    width: 100%; margin-top: 8px; padding: 8px; cursor: pointer;
+    background: #1b2430; color: #d6e2ef; border: 1px solid #2c3846; border-radius: 6px; font-size: 13px;
+  }
+  button:hover { background: #23303f; }
+  button:disabled { opacity: .45; cursor: default; }
+  details.alt { margin-top: 10px; font-size: 11px; color: #61707f; }
+  details.alt summary { cursor: pointer; padding: 4px 0; }
+  .hint { margin-top: 8px; font-size: 11px; color: #61707f; line-height: 1.5; }
+  code { color: #8ab4d8; }
+  /* ================= 手机房主 ================= */
+  html, body {
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #panel, #frz, #diag-root, #zhcard, #de-rotate-old { display: none !important; }
+
+  /* 房号条：开房 / 显示 / 点一下复制 */
+  #de-room-bar {
+    position: fixed; left: 50%; top: max(8px, env(safe-area-inset-top)); transform: translateX(-50%);
+    z-index: 10001; display: flex; align-items: center; gap: 8px;
+    padding: 6px 14px; border-radius: 999px; white-space: nowrap;
+    background: rgba(8, 12, 18, .82); border: 1px solid rgba(120, 190, 255, .35);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .45);
+    font: 13px/1.3 "Microsoft YaHei", system-ui, sans-serif; color: #dfe8f2;
+  }
+  #de-room-bar .lbl { color: #8fa3b8; font-size: 11.5px; }
+  #de-room-bar b { color: #8ee6a0; font: 600 14px/1.2 Consolas, ui-monospace, monospace; letter-spacing: .5px; }
+  #de-room-bar .st { color: #9fb0c2; font-size: 11.5px; }
+  #de-rotate {
+    display: none; position: fixed; inset: 0; z-index: 10003; align-items: center; justify-content: center;
+    background: rgba(4, 6, 10, .86); color: #cfe0ef; font-size: 15px; text-align: center; line-height: 2;
+  }
+  @media (orientation: portrait) { #de-rotate { display: flex; } }</style>
+<link rel="stylesheet" href="vendor/ruffle-touch.css" />
+</head>
+<body>
+<div id="wrap"><iframe id="game" allow="autoplay; fullscreen"></iframe></div>
+<div id="clicklayer"></div>
+
+<div id="panel">
+  <h1>双人/三人联机 · 房主（P1）</h1>
+  <div class="row"><span class="k">游戏</span><span class="v" id="v-game">载入中…</span></div>
+  <div class="row"><span class="k">对端</span><span class="v" id="v-peer">未连接</span></div>
+  <div class="row"><span class="k">帧号</span><span class="v" id="v-frame">0</span></div>
+  <div class="row"><span class="k">帧率</span><span class="v" id="v-fps">0 fps</span></div>
+  <div class="row"><span class="k">往返</span><span class="v" id="v-rtt">-- ms</span></div>
+  <div class="row"><span class="k">一致性</span><span class="v" id="v-sync">—</span></div>
+  <div class="row"><span class="k">画布</span><span class="v" id="v-canvas">—</span></div>
+  <div class="row"><span class="k">状态指纹</span><span class="v" id="v-state">—</span></div>
+  <div class="row"><span class="k">随机数调用</span><span class="v" id="v-rng">—</span></div>
+  <div class="row"><span class="k">输入延迟</span><span class="v" id="v-delay">—</span></div>
+
+  <div class="room" id="room">点这里开房</div>
+  <div class="hint" id="room-hint">开房后把房间号发给好友，他输入就能进。</div>
+
+  <details class="alt">
+    <summary>备用：手动连接码（信令连不上时用）</summary>
+    <button id="btn-offer">生成邀请码</button>
+    <textarea id="offer" readonly placeholder="生成后出现，发给好友"></textarea>
+    <textarea id="answer" placeholder="把好友回传的回应码粘到这里"></textarea>
+    <button id="btn-answer" disabled>接收回应 · 开局</button>
+  </details>
+
+  <div class="hint">
+    你玩 <code>↑←↓→</code> 移动 · <code>N</code> 攻击 · <code>M</code> 跳。菜单只能你点。
+  </div>
+</div>
+
+<script src="vendor/ruffle-touch.js"></script>
+<script src="../net2/common.js"></script>
+<script src="peerjs.min.js"></script>
+<script src="diag.js?v=3"></script>
+<script src="subs.js?v=10"></script>
+<script src="lock.js?v=8"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const iframe = $("game");
+
+  // 房间号即种子：de + 36 进制种子，好友从房间号里直接解析出同一个随机种子
+  let SEED = (Math.random() * 0x7fffffff) >>> 0;
+
+  // 信令走 PeerJS 公网云（wss://0.peerjs.com:443），不再依赖房主本机的 PeerServer。
+  // 这样页面挂到任何公网地址（https 隧道也好、别的托管也好）好友都能发房号、能连。
+  const PEER_OPTS = {
+    debug: 0,
+    config: {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:global.stun.twilio.com:3478" }
+      ]
+    }
+  };
+
+  iframe.src = "../html5/play3p.html?seed=" + SEED + "&cb=" + Date.now() + "&nolock=1";   // 远程同乐：不锁步
+
+  const NOLOCK = true;   // 远程同乐是唯一模式：锁步永久禁用（好友只看视频+转发输入）
+  const lock = new Lock({
+    side: "p1", seed: SEED, frame: iframe, expectPeers: (parseInt(new URLSearchParams(location.search).get("p") || "2", 10) || 2),
+    log: (m) => console.log("[lock]", m),
+    diag: (c, m, d, s) => window.__diag && window.__diag.report(c, m, d, s)
+  });  /* 远程同乐（nolock）：桩掉锁步起跑与闸门——好友不跑游戏副本，
+   * 任何锁步等待都会永久冻结。play3p 保持 ready 自转自由跑。 */
+  if (NOLOCK) {
+    lock.__nolock = true;
+    lock._maybeStart = function () {};
+    lock._startPacing = function () {};
+    lock._send = function () {};
+    lock.attachTransport = function () {};
+  }
+
+  /* ===== 房主本地输入：直接打 iframe.contentWindow.__lock（与好友转发同一条已验证通道） =====
+   * 不再依赖 lock.js 的 self.L（NOLOCK 模式下不稳）。__lock 是 play3p 顶层暴露的 L 对象。
+   * play3p.applyEvents 接受: ["md"/"mu", fx, fy] 鼠标；["d"/"u", code] 键盘。 */
+  const P1KEYS = ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","KeyN","KeyM"];
+  const P2KEYS = ["KeyW","KeyA","KeyS","KeyD","KeyG","KeyH"];
+
+  function hostL() { return iframe.contentWindow && iframe.contentWindow.__lock; }
+  function hostClick(fx, fy) {
+    try {
+      const w = iframe.contentWindow, d = iframe.contentDocument;
+      const cv = d.querySelector("canvas");
+      if (!cv) return;
+      const r = cv.getBoundingClientRect();
+      const cx = r.left + r.width * fx, cy = r.top + r.height * fy;
+      const O = { clientX: cx, clientY: cy, button: 0, buttons: 1, bubbles: true, cancelable: true, composed: true, view: w, pointerId: 1, pointerType: "mouse", isPrimary: true };
+      // 与好友转发完全一致：真实 PointerEvent 直接打到 canvas（AwayFL 原生管线处理菜单命中）
+      cv.dispatchEvent(new w.PointerEvent("pointerdown", O));
+      cv.dispatchEvent(new w.MouseEvent("mousedown", O));
+      const o2 = Object.assign({}, O, { buttons: 0 });
+      cv.dispatchEvent(new w.PointerEvent("pointerup", o2));
+      cv.dispatchEvent(new w.MouseEvent("mouseup", o2));
+      cv.dispatchEvent(new w.MouseEvent("click", o2));
+    } catch (err) {}
+  }
+  function hostKey(down, code) {
+    const L = hostL();
+    if (L && L.applyEvents) L.applyEvents([[down ? "d" : "u", code]]);
+  }
+
+  // 鼠标：clicklayer 接管。坐标按 canvas 归一（与 fireMouse 同基准）
+  const layer = document.getElementById("clicklayer");
+  if (layer) {
+    layer.addEventListener("pointerdown", (e) => {
+      try {
+        // clicklayer 的 e.clientX/Y 在宿主页面空间；canvas 的 rect 在 iframe 内部空间（0,0 起）。
+        // 必须先把页面坐标换算成 iframe 内坐标：用 iframe 自身在屏幕上的 rect + 缩放比。
+        const fr = iframe.getBoundingClientRect();
+        const inX = (e.clientX - fr.left) / fr.width * 880;   // 880=canvas 内部宽
+        const inY = (e.clientY - fr.top) / fr.height * 640;  // 640=canvas 内部高
+        const fx = Math.min(1, Math.max(0, inX / 880));
+        const fy = Math.min(1, Math.max(0, inY / 640));
+        hostClick(fx, fy);
+      } catch (err) {}
+    }, false);
+  }
+  // 键盘：捕获本页面键码，P1 键直注游戏
+  window.addEventListener("keydown", (e) => {
+    if (P1KEYS.indexOf(e.code) >= 0) { e.preventDefault(); hostKey(true, e.code); }
+  }, true);
+  window.addEventListener("keyup", (e) => {
+    if (P1KEYS.indexOf(e.code) >= 0) { e.preventDefault(); hostKey(false, e.code); }
+  }, true);
+
+  /* 让 iframe 显示尺寸跟随窗口，但内部视口恒为 880x640 */
+  function fitIframe() {
+    const k = Math.min(window.innerWidth / 880, window.innerHeight / 640);
+    iframe.style.transform = "translate(-50%, -50%) scale(" + Math.max(0.3, k) + ")";
+  }
+  window.addEventListener("resize", fitIframe);
+  fitIframe();
+
+  /* ---------- 状态指纹比对 ----------
+     两端各自在 AS3 里算「玩家坐标/血量 + 敌人坐标/血量 + 人数」的指纹，
+     每 10 个游戏帧上报一次到服务器（房主 slot=1，好友 slot=2）。
+     这里只在两端报的是同一帧号时才比较，避免帧错位造成误报。 */
+  const st = { lastF: 0, same: 0, diff: 0, last: "" };
+  async function pollHashes() {
+    try {
+      const d = await fetch("/api/hashes").then((r) => r.json());
+      const a = d["1"], b = d["2"];
+      if (!a || !b) return;
+      if (a.f !== b.f || a.f === 0) { $("v-state").textContent = "等两端同步（" + a.f + "/" + b.f + "）"; return; }
+      if (a.f === st.lastF) return;
+      st.lastF = a.f;
+      if (a.h === b.h) {
+        st.same++;
+        $("v-state").textContent = "一致 f=" + a.f;
+        $("v-state").className = "v ok";
+      } else {
+        st.diff++;
+        st.last = "f=" + a.f + " 本端 " + a.h + " / 对端 " + b.h;
+        $("v-state").textContent = "偏离 " + st.diff + " 次";
+        $("v-state").className = "v bad";
+        if (window.__diag) {
+          window.__diag.report("state", "第 " + a.f + " 帧游戏状态不一致", st.last, "err");
+        }
+      }
+    } catch (e) {}
+  }
+  setInterval(pollHashes, 250);
+
+  /* 两端随机数调用次数：若不一致，说明随机数流已错位，必然后面全部分叉 */
+  async function pollRng() {
+    try {
+      const d = await fetch("/api/rng").then((r) => r.json());
+      const a = d["1"], b = d["2"];
+      if (!a || !b) return;
+      // 两端帧号不同时不做结论（只是采样时刻不同，不是错位）
+      if (a.f !== b.f || !a.f) {
+        $("v-rng").textContent = "同步中（" + a.f + "/" + b.f + "）";
+        return;
+      }
+      const same = a.n === b.n;
+      $("v-rng").textContent = a.n + " / " + b.n + (same ? "" : "（差 " + (a.n - b.n) + "）");
+      $("v-rng").className = "v " + (same ? "ok" : "bad");
+    } catch (e) {}
+  }
+  setInterval(pollRng, 500);
+
+  /* ---------- 状态面板 ---------- */
+  setInterval(() => {
+    const L = lock.L;
+    $("v-game").textContent = L ? (L.started ? "就绪" : "载入中") : "载入中";
+    $("v-game").className = "v" + (L && L.started ? " ok" : "");
+    const open = !!lock.transport || !!(lock.dc && lock.dc.readyState === "open");
+    $("v-peer").textContent = open ? (lock.started ? "已连接 · 锁步中" : "已连接") : "未连接";
+    $("v-peer").className = "v" + (open ? " ok" : "");
+    $("v-frame").textContent = lock.next;
+    $("v-fps").textContent = lock.stats.fps + " fps";
+    $("v-rtt").textContent = (lock.stats.rtt || "--") + " ms";
+    $("v-sync").textContent = lock.desync
+      ? ("偏离 " + lock.desync + " 次" + (lock.desyncKind ? "（" + lock.desyncKind + "）" : ""))
+      : "一致";
+    $("v-sync").className = "v " + (lock.desync ? "bad" : "ok");
+    $("v-canvas").textContent = lock.canvasSize();
+    $("v-delay").textContent = Math.round(lock.delay / 30 * 1000) + " ms";
+  }, 300);
+
+  /* ---------- 中文字幕（房主侧）----------
+   * 每 300ms 从 iframe 的 AVM 舞台树读可见文本 → 查表 → 底部字幕条显示，
+   * 文本变化时通过 DataChannel 同步给好友（好友端视频里是英文，字幕由本地 HTML 画）。
+   * 好友看到的是"同一句中文"，与视频帧无关，不受码率/丢帧影响。 */
+  const deConns = [];
+  let deLast = "";
+  function deSample() {
+    const tSub = performance.now();
+    let texts = [];
+    try {
+      const w = iframe.contentWindow;
+      texts = window.DE_collect ? window.DE_collect(w) : [];
+    } catch (e) {}
+    let line = "";
+    try { line = window.DE_TRANSLATE ? window.DE_TRANSLATE(texts) : ""; } catch (e) {}
+    /* 未收录的长句记一条诊断：打的时候哪句没出中文，面板里会直接列出来 */
+    try {
+      for (let i = 0; i < texts.length; i++) {
+        const s = texts[i];
+        if (s.length < 8 || !/[A-Za-z]{3,}/.test(s) || !/\s/.test(s)) continue;
+        if (window.DE_MATCH && window.DE_MATCH(s)) continue;
+        if (window.DE_UI_N && window.DE_UI_N[window.DE_NORM(s)]) continue;
+        window.__deMiss = window.__deMiss || {};
+        if (window.__deMiss[s]) continue;
+        window.__deMiss[s] = 1;
+        window.__diag && window.__diag.report("sub", "字幕缺词：" + s.slice(0, 42), "把这条原文发给开发者补进词表", "warn");
+      }
+    } catch (e) {}
+    const dtSub = performance.now() - tSub;
+    const pfSub = window.__perfSubs || (window.__perfSubs = { n: 0, sum: 0, max: 0 });
+    pfSub.n++; pfSub.sum += dtSub; if (dtSub > pfSub.max) pfSub.max = dtSub; pfSub.last = dtSub;
+    if (line === deLast) return;
+    deLast = line;
+    if (window.DE_bar) window.DE_bar(line, 7000);
+    for (let i = 0; i < deConns.length; i++) {
+      try { if (deConns[i] && deConns[i].open) deConns[i].send({ sys: "sub", t: line }); } catch (e) {}
+    }
+  }
+  setInterval(deSample, 300);
+  try { window.__deSample = deSample; } catch (e) {}
+  /* 一句中文都没出来的原文都记在这里：控制台敲 __subsMiss() 就能整份拷出来 */
+  window.__subsMiss = function () { return Object.keys(window.__deMiss || {}); };
+  window.__npQualityMode = function (m) {
+    window.__npQMode = (m === "smooth") ? "smooth" : "sharp";
+    const s = window.__npSender;
+    if (s && window.__npApplyQuality) window.__npApplyQuality(s, (window.__npQuality && window.__npQuality.bitrate) || 6000000);
+    window.__diag && window.__diag.report("media", "画质模式 " + window.__npQMode,
+      window.__npQMode === "smooth" ? "允许降到 0.8 分辨率换流畅" : "死守原始分辨率", "info");
+    return window.__npQMode;
+  };
+  /* 卡顿定位：一句话读三个数字
+   *   subs  = 我的字幕轮询耗时
+   *   sweep = 我的守卫轮询耗时（在 iframe 里）
+   *   step  = 游戏每一步之间的实际间隔（真正的卡顿）
+   *   send  = 编码器受限原因（cpu/bandwidth/none） */
+  window.__perf = async function () {
+    const out = { subs: null, sweep: null, step: null, send: window.__npQuality || null };
+    const s = window.__perfSubs;
+    if (s) out.subs = { calls: s.n, avgMs: Math.round((s.sum / Math.max(1, s.n)) * 100) / 100, maxMs: Math.round(s.max * 100) / 100 };
+    try { out.sweep = iframe.contentWindow.__perfSweep || null; } catch (e) {}
+    try { out.step = iframe.contentWindow.__perfStep || null; } catch (e) {}
+    try { const L = iframe.contentWindow.__lock; out.lock = { phase: L.phase, qLen: L.qLen, contained: iframe.contentWindow.__npContained || 0 }; } catch (e) {}
+    return out;
+  };
+
+  /* ---------- PeerJS：短房号 ---------- */
+  function bindConn(conn) {
+    try { deConns.push(conn); } catch (e) {}
+    const adapter = {
+      _q: [],
+      send: (o) => { if (conn.open) { try { conn.send(o); } catch (e) {} } else adapter._q.push(o); },
+      ready: conn.open
+    };
+    lock.attachTransport(adapter);
+    conn.on("open", () => { adapter.ready = true; const q = adapter._q.splice(0); q.forEach((o) => { try { conn.send(o); } catch (e) {} }); adapter.onopen && adapter.onopen(); });
+    conn.on("data", (d) => adapter.onmessage && adapter.onmessage(d));
+    conn.on("close", () => { adapter.ready = false; adapter.onclose && adapter.onclose(); });
+    conn.on("error", (e) => window.__diag && window.__diag.report("dc", "PeerJS 连接出错",
+      String((e && e.type) || e), "err"));
+    if (conn.open) setTimeout(() => { adapter.ready = true; adapter.onopen && adapter.onopen(); }, 0);
+  }
+
+  let peer = null;
+  let roomId = null;      /* 房号：de + 种子36进制 + "-" + 4位随机后缀，避开公网云 id 撞车 */
+  let openTries = 0;
+
+  function salt4() {
+    const A = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let t = "";
+    for (let i = 0; i < 4; i++) t += A[(Math.random() * A.length) | 0];
+    return t;
+  }
+
+  /* ---- 画布捕获：等画布 + 精确报错 ----
+   * 之前是「连接一来就立刻 querySelector('canvas')」，好友如果加得早（游戏还在
+   * 加载），画布还不存在，就直接报 captureStream 不可用，看起来像浏览器不支持，
+   * 其实是时序问题。这里改成：等画布出现（默认 15 秒），并且把失败原因分成
+   * 「没有画布」和「浏览器没有这个 API」两种，各自给明确提示。 */
+  /* iframe 现状描述：区分「文档还没来」「来了但还没画布」「画布已就绪」 */
+  function describeIframe(d) {
+    try {
+      if (!d) return "iframe 文档还没准备好";
+      const n = d.querySelectorAll("canvas").length;
+      const txt = ((d.body && d.body.innerText) || "").replace(/\s+/g, " ").slice(0, 100);
+      return "ready=" + d.readyState + " canvas=" + n + (txt ? " 内容：" + txt : "");
+    } catch (e) { return "读取 iframe 失败：" + String((e && e.message) || e); }
+  }
+
+  /* 等画布：一直等到游戏真正创建画布为止。
+   * 之前用固定 15 秒超时，遇到冷缓存（整包重下 SWF 2MB + 资源）就会假失败。
+   * 现在默认上限 180 秒，期间每 5/15/30/60 秒（之后每 30 秒）报一次进度，
+   * 这样「还没启动完」和「iframe 根本没加载」能一眼分开。 */
+  async function waitCanvas(ms) {
+    const t0 = Date.now();
+    const marks = [5, 15, 30, 60];
+    let lastMark = -1;
+    for (;;) {
+      let cv = null, d = null;
+      try {
+        d = iframe && iframe.contentDocument;
+        cv = d && d.querySelector("canvas");
+      } catch (e) {}
+      if (cv) return { cv: cv, waited: Date.now() - t0 };
+      const el = Date.now() - t0;
+      if (el >= ms) return { cv: null, waited: el, why: describeIframe(d) };
+      const sec = Math.round(el / 1000);
+      const due = marks.indexOf(sec) >= 0 || (sec >= 90 && sec % 30 === 0);
+      if (due && sec !== lastMark) {
+        lastMark = sec;
+        window.__diag && window.__diag.report("media", "等游戏画布 " + sec + "s", describeIframe(d), "info");
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  async function captureGame(ms) {
+    const wait = await waitCanvas(ms || 180000);
+    const cv = wait.cv;
+    if (!cv) throw new Error("等了 " + Math.round(wait.waited / 1000) + " 秒仍然没有画布（" + wait.why + "）");
+    if (typeof cv.captureStream !== "function") {
+      let ua = "未知内核";
+      try { ua = (navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari)\/[\d.]+/) || ["未知内核"])[0]; } catch (e) {}
+      throw new Error("这个浏览器不支持 canvas.captureStream（" + ua + "），请用 Chrome 或 Edge 打开房主页");
+    }
+    let manual = null;
+    try {
+      const tmp = cv.captureStream(0);
+      const trk = tmp.getVideoTracks()[0];
+      if (trk && typeof trk.requestFrame === "function") manual = { stream: tmp, track: trk };
+      else { try { tmp.getTracks().forEach((x) => x.stop()); } catch (e) {} }
+    } catch (e) {}
+    const stream = manual ? manual.stream : cv.captureStream(30);
+    let res = "";
+    try {
+      const st = stream.getVideoTracks()[0].getSettings();
+      res = (st.width || "?") + "×" + (st.height || "?");
+    } catch (e) {}
+    window.__diag && window.__diag.report("media", "视频流已建立", res + (manual ? " 手动推帧" : " 定时捕获") + "，等画布 " + Math.round(wait.waited / 1000) + "s", "info");
+    return { stream: stream, track: manual ? manual.track : null, manual: !!manual };
+  }
+  window.__npTestCapture = async (ms) => {
+    try {
+      const g = await captureGame(ms || 8000);
+      const tr = g.stream.getVideoTracks()[0];
+      const st = tr && tr.getSettings ? tr.getSettings() : {};
+      return { ok: true, manual: g.manual, videoTracks: g.stream.getVideoTracks().length, w: st.width, h: st.height };
+    } catch (e) { return { ok: false, err: String(e && e.message || e) }; }
+  };
+
+  function openRoom() {    roomId = "de" + SEED.toString(36) + "-" + salt4();
+    $("room").textContent = "连接信令…";
+    try { if (peer) peer.destroy(); } catch (e) {}
+    peer = new Peer(roomId, PEER_OPTS);
+
+    peer.on("open", () => {
+      $("room").textContent = roomId;
+      $("room-hint").textContent = (lock.expectPeers === 1 ? "已复制。双人房：1 位好友加入即开局（WASD）。" : "已复制，发给好友即可。两个好友都加入后开局。");
+      navigator.clipboard.writeText(roomId).catch(() => {});
+    });
+    peer.on("connection", bindConn);
+    /* ---- 视频流广播（远程同乐模式）----
+     * 好友不跑游戏副本，直接看房主画面；好友的鼠标/键盘事件回传，由房主注入本地游戏。
+     * 菜单/开场动画零同步问题（状态只有房主一份），战斗阶段再切锁步。 */
+    let mediaStream = null;
+    peer.on("connection", (conn) => {
+      conn.on("open", async () => {
+        try {
+          if (!mediaStream) {
+            const got = await captureGame(180000);
+            mediaStream = got.stream;
+            try { if (got.track && iframe.contentWindow) iframe.contentWindow.__npCapTrack = got.track; } catch (e) {}
+            try { window.__npManualCapture = got.manual; } catch (e) {}
+            // 音频：AwayFL 用 WebAudio，桥接到流（拿不到就只传画面）
+            try {
+              const w = iframe.contentWindow;
+              const AC = w.AudioContext || w.webkitAudioContext;
+              if (AC && !w.__npAudioDst) {
+                w.__npAudioDst = new AC().createMediaStreamDestination();
+                // 找到目的地链：AwayFL 的 master gain 不易定位，先只发画面
+              }
+            } catch (e) {}
+          }
+          const call = peer.call(conn.peer, mediaStream);
+          window.__npCall = call;
+          /* ---- 画质 ----
+           * 实测根因：好友端只解到 330×240，而房主画布是 880×640。
+           * 编码器在带宽估算偏紧时会自己降分辨率，于是好友看到的是一张被缩小
+           * 4 倍再放大的图 —— 糊的主因，不是 CSS 滤波。
+           * 另一个坑：setParameters 必须在协商完成后再调。刚 call() 完时
+           * getParameters().encodings 是空的，写进去会被静默丢弃（旧代码就是这样
+           * 失效的：参数看着设了，实际还是默认值）。
+           * 所以：1) 显式钉住 scaleResolutionDownBy = 1；
+           *       2) 在 negotiationcompleted 与 0.8/2.5/6/12 秒反复重申；
+           *       3) 每 4 秒巡检时再兜一次（只调码率，绝不调分辨率）。 */
+          /* 战斗卡顿时可以现场切换（控制台）：
+           *   __npQualityMode("smooth")  允许编码器降分辨率换流畅
+           *   __npQualityMode("sharp")   死守 880×640（默认）
+           * 默认 sharp，是因为之前 4 倍缩放的糊图就是这么来的。 */
+          function npApplyQuality(sender, bitrate) {
+            if (!sender) return false;
+            window.__npSender = sender;
+            const smooth = window.__npQMode === "smooth";
+            try { if (sender.track) sender.track.contentHint = "detail"; } catch (e) {}
+            try {
+              const p = sender.getParameters();
+              p.degradationPreference = smooth ? "balanced" : "maintain-resolution";
+              if (!p.encodings || !p.encodings.length) p.encodings = [{ active: true }];
+              const e0 = p.encodings[0];
+              e0.active = true;
+              e0.maxBitrate = bitrate;
+              e0.maxFramerate = 30;
+              e0.scaleResolutionDownBy = smooth ? 0.8 : 1;   /* 关键：默认不许缩分辨率 */
+              e0.priority = "high";
+              try { e0.networkPriority = "high"; } catch (e) {}
+              const ret = sender.setParameters(p);
+              if (ret && ret.catch) ret.catch((err) => { window.__npQErr = String((err && err.message) || err); });
+              window.__npQuality = { bitrate: bitrate, degradation: "maintain-resolution", scale: 1 };
+              return true;
+            } catch (e) { window.__npQErr = String((e && e.message) || e); return false; }
+          }
+          window.__npApplyQuality = npApplyQuality;
+          try {
+            const pc = call && call.peerConnection;
+            const sender = pc && pc.getSenders && pc.getSenders()[0];
+            if (sender) {
+              npApplyQuality(sender, 6000000);
+              if (pc) {
+                try { pc.addEventListener("negotiationcompleted", () => npApplyQuality(sender, 6000000)); } catch (e) {}
+                try { pc.addEventListener("signalingstatechange", () => npApplyQuality(sender, 6000000)); } catch (e) {}
+              }
+              [800, 2500, 6000, 12000].forEach((ms) => setTimeout(() => npApplyQuality(sender, 6000000), ms));
+              let cur = 6000000, lowStreak = 0, okStreak = 0;
+              window.__npQTimer = setInterval(async () => {
+                let st = null;
+                try {
+                  const rep = await sender.getStats();
+                  rep.forEach((r) => { if (r.type === "outbound-rtp" && r.kind === "video") st = r; });
+                } catch (e) {}
+                if (!st) return;
+                const lim = st.qualityLimitationReason || "none";
+                if (lim === "bandwidth") { lowStreak++; okStreak = 0; } else { okStreak++; lowStreak = 0; }
+                let next = cur;
+                if (lowStreak >= 2 && cur > 1500000) next = Math.max(1500000, Math.round(cur / 2));
+                else if (okStreak >= 3 && cur < 6000000) next = Math.min(6000000, Math.round(cur * 1.5));
+                const changed = next !== cur;
+                if (changed) { cur = next; lowStreak = 0; okStreak = 0; }
+                npApplyQuality(sender, cur);
+                if (changed) window.__diag && window.__diag.report("media", "码率 " + Math.round(cur / 1000) + "kbps", "受限：" + lim, "info");
+                window.__npQuality = { bitrate: cur, degradation: "maintain-resolution", scale: 1, reason: lim,
+                  w: st.frameWidth, h: st.frameHeight, fps: st.framesPerSecond,
+                  resChanges: st.qualityLimitationResolutionChanges };
+              }, 4000);
+            }
+          } catch (e) {}
+        } catch (err) { window.__diag && window.__diag.report("media", "视频流失败", String(err && err.message || err), "warn"); }
+      });
+      /* 自愈入口：frz.js 检测到「游戏在跑但捕获/编码停住」时调用。
+       * 重建捕获流（同样手动推帧）并重新呼叫对端，不依赖对根因的猜测。 */
+      window.__npRecapture = async () => {
+        try {
+          const got = await captureGame(5000);
+          try { if (mediaStream) mediaStream.getTracks().forEach((t2) => t2.stop()); } catch (e) {}
+          try { iframe.contentWindow.__npCapTrack = got.track; } catch (e) {}
+          mediaStream = got.stream;
+          const nc = peer.call(conn.peer, mediaStream);
+          window.__npCall = nc;
+          /* 重连出来的是新 sender，画质参数必须重新钉一遍（含不缩分辨率） */
+          try {
+            const ns = nc.peerConnection && nc.peerConnection.getSenders && nc.peerConnection.getSenders()[0];
+            if (ns && window.__npApplyQuality) {
+              window.__npApplyQuality(ns, 6000000);
+              [800, 2500, 6000].forEach((ms) => setTimeout(() => window.__npApplyQuality(ns, 6000000), ms));
+            }
+          } catch (e) {}
+          return true;
+        } catch (e) { return false; }
+      };
+      conn.on("data", (data) => {
+        // 好友回传的输入事件 → 注入 iframe（房主本地跑真游戏）
+        /* 手机好友的「点一下」：直接给归一化坐标，不猜两端窗口尺寸
+         * （手机屏和房主屏差太多，老的 clientX/clientY 转发会点偏） */
+        if (data && data.sys === "tap") { hostClick(data.fx, data.fy); return; }
+        if (!data || !data.evt) return;
+        try {
+          const w = iframe.contentWindow, d = iframe.contentDocument;
+          const cv = d.querySelector("canvas") || d.body;
+          const O = {
+            clientX: data.x, clientY: data.y, button: data.button || 0, buttons: data.buttons || 0,
+            bubbles: true, cancelable: true, view: w
+          };
+          let ev;
+          const __L = w.__lock || null;   // play3p 暴露的 L 对象本体
+          if (data.evt.indexOf("key") === 0) {
+            // 战斗键走 applyEvents（与房主键盘同路径，含 KEYCODE 映射）；菜单键（Enter 等）走 KeyboardEvent
+            const map = w.KEYCODE_ || null;
+            ev = new w.KeyboardEvent(data.evt, { key: data.key, code: data.code, keyCode: data.keyCode, bubbles: true, cancelable: true });
+            const P2KEYS = ["KeyW","KeyA","KeyS","KeyD","KeyG","KeyH"];
+            if (__L && __L.applyEvents && data.code && P2KEYS.indexOf(data.code) >= 0) {
+              __L.applyEvents([[data.evt === "keydown" ? "d" : "u", data.code]]);
+              return;
+            }
+          } else if (data.evt.indexOf("pointer") === 0) {
+            O.pointerId = 1; O.pointerType = "mouse"; O.isPrimary = true;
+            ev = new w.PointerEvent(data.evt, O);
+          } else {
+            ev = new w.MouseEvent(data.evt, O);
+          }
+          (data.target === "doc" ? d : cv).dispatchEvent(ev);
+        } catch (e) {}
+      });
+    });
+    peer.on("error", (e) => {
+      const t = (e && e.type) || String(e);
+      // id 撞车 / 信令抖动：换个后缀重开，最多 6 次
+      if ((t === "unavailable-id" || t === "network" || t === "server-error") && openTries < 6) {
+        openTries++;
+        $("room").textContent = "信令重试 " + openTries + "…";
+        $("room-hint").textContent = "公网信令一时连不上，正在重试（" + t + "）。";
+        setTimeout(openRoom, 900 * openTries);
+        return;
+      }
+      $("room").textContent = "开房失败";
+      $("room-hint").textContent = "错误：" + t + "（检查网络是否能访问 0.peerjs.com）";
+      if (window.__diag) window.__diag.report("dc", "PeerJS 开房失败", t, "err");
+    });
+  }
+
+  $("room").addEventListener("click", () => {
+    if (peer) {
+      navigator.clipboard.writeText(roomId || $("room").textContent).catch(() => {});
+      $("room-hint").textContent = "已复制，发给好友即可。";
+      return;
+    }
+    openRoom();
+  });
+
+  /* ---------- 备用：手动连接码 ---------- */
+  $("btn-offer").addEventListener("click", async () => {
+    $("btn-offer").disabled = true;
+    $("btn-offer").textContent = "正在收集候选地址…";
+    const code = await lock.createOffer();
+    $("offer").value = "O." + SEED.toString(36) + "." + code;
+    $("btn-offer").textContent = "已生成，发给好友";
+    $("btn-answer").disabled = false;
+  });
+
+  $("btn-answer").addEventListener("click", async () => {
+    const v = $("answer").value.trim();
+    if (!v) return;
+    $("btn-answer").disabled = true;
+    try {
+      await lock.acceptAnswer(v.replace(/^A\.[^.]*\./, ""));
+      $("btn-answer").textContent = "已接入，等开局";
+    } catch (e) {
+      $("btn-answer").disabled = false;
+      $("btn-answer").textContent = "回应码无效，重试";
+    }
+  });
+
+  /* 测试接口 */
+  window.__np = {
+    lock: lock,
+    seed: SEED,
+    get roomId() { return roomId; },
+    get peerOpen() { return !!(peer && peer.open); },
+    createOffer: () => lock.createOffer().then((c) => "O." + SEED.toString(36) + "." + c),
+    acceptAnswer: (v) => lock.acceptAnswer(v.replace(/^A\.[^.]*\./, ""))
+  };
+})();
+
+  /* ---------- 内置监听器：面板底部实时显示锁步卡点 ---------- */
+  (function mon() {
+    let box = document.getElementById("v-mon");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "v-mon";
+      box.style.cssText = "margin-top:8px;padding-top:8px;border-top:1px solid #232a34;font-size:11px;line-height:1.5;color:#8fa3b8;white-space:pre-wrap;word-break:break-all;";
+      const panel = document.getElementById("panel");
+      if (panel) panel.appendChild(box);
+    }
+    const t0 = Date.now();
+    const last = { k: "" };
+    window.__monTimer = setInterval(function () {
+      const L = window.__np && window.__np.lock;
+      if (!L) { box.textContent = "监听: 未找到 lock"; return; }
+      const il = L.L;
+      let tip;
+      const st = "t=" + ((Date.now() - t0) / 1000 | 0) + "s next=" + L.next + " linked=" + !!L.linked
+        + " peerReady=" + !!L.peerReady + " started=" + !!L.started
+        + " tp=" + (L.transports ? L.transports.length + "/" + (L._readyCount ? L._readyCount() : "?") : 0)
+        + " game=" + (il ? (il.started ? "ok" : il.phase) : "no-lock");
+      if (!L.linked) tip = "卡点: P2P未连通(ready/expect不足)";
+      else if (!L.peerReady) tip = "卡点: rd互报未完成(对端未宣告)";
+      else if (!il || !il.started) tip = "卡点: 游戏载入回调未触发";
+      else if (!L.started) tip = "卡点: _maybeStart差最后一环";
+      else if (L.next === 0) tip = "卡点: 闸门未开 own0=" + (L.own && L.own.has(0)) + " rem0=" + (L.rem && L.rem.has(0));
+      else tip = "✓ 锁步推进中";
+      const key = L.next + "|" + tip;
+      if (key !== last.k) {
+        box.textContent = st + "\n" + tip;
+        box.style.color = tip.charAt(0) === "✓" ? "#4caf50" : "#ff9800";
+        last.k = key;
+      }
+    }, 500);
+})();
+
+  /* ---------- 面板收起 / 展开 ---------- */
+  (function panelToggle() {
+    const panel = document.getElementById("panel");
+    if (!panel) return;
+    const h1 = panel.querySelector("h1");
+    const btn = document.createElement("button");
+    btn.id = "collapse";
+    btn.textContent = "收起";
+    h1.appendChild(btn);
+
+    const handle = document.createElement("div");
+    handle.id = "handle";
+    handle.textContent = "☰ 面板";
+    panel.insertBefore(handle, panel.firstChild);
+
+    function setMin(min) {
+      panel.classList.toggle("min", min);
+      try { localStorage.setItem("de_panel_min", min ? "1" : "0"); } catch (e) {}
+    }
+    btn.addEventListener("click", (e) => { e.stopPropagation(); setMin(true); });
+    handle.addEventListener("click", () => setMin(false));
+    try { if (localStorage.getItem("de_panel_min") === "1") setMin(true); } catch (e) {}
+
+    // 快捷键 ` （反引号）切换
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "Backquote") { e.preventDefault(); setMin(!panel.classList.contains("min")); }
+    });
+  })();
+
+  /* ---------- 中文对照卡（F1） ---------- */
+  (function zhCard() {
+    const box = document.createElement("div");
+    box.id = "zhcard";
+    box.innerHTML = ''
+      + '<h2>菜单文字对照（游戏本体是嵌入字体，无法直接改成中文）</h2>'
+      + '<table>'
+      + '<tr><td class="e">PLAY</td><td>开始游戏</td></tr>'
+      + '<tr><td class="e">1 PLAYER / 2 PLAYERS</td><td>单人 / 双人</td></tr>'
+      + '<tr><td class="e">MAP（地图上闪光的 PLAY）</td><td>关卡选择，点它进关</td></tr>'
+      + '<tr><td class="e">HELP / CREDITS</td><td>操作说明 / 制作名单</td></tr>'
+      + '<tr><td class="e">REDEFINE KEYS</td><td>自定义按键</td></tr>'
+      + '<tr><td class="e">P1：←↑↓→ · N · M</td><td>移动 · 攻击/对话 · 跳跃</td></tr>'
+      + '<tr><td class="e">P2：WASD · G · H</td><td>移动 · 攻击/对话 · 跳跃</td></tr>'
+      + '</table>'
+      + '<div class="tip">F1 开关 · 按 ` 收起右上角面板 · 游戏内对话是英文，暂无中文</div>';
+    document.body.appendChild(box);
+
+    const st = document.createElement("style");
+    st.textContent = "  /* 中文对照卡（F1 开关） */\n  #zhcard {\n    position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);\n    display: none; z-index: 30; width: min(620px, 92vw);\n    background: rgba(10, 14, 19, .95); border: 1px solid #2c3846; border-radius: 10px;\n    padding: 14px 18px; box-shadow: 0 18px 50px rgba(0,0,0,.65);\n    font-size: 12px; line-height: 1.9; color: #cfd6df;\n  }\n  #zhcard h2 { font-size: 13px; color: #e8eef5; margin-bottom: 6px; font-weight: 600; }\n  #zhcard table { width: 100%; border-collapse: collapse; }\n  #zhcard td { padding: 1px 0; vertical-align: top; }\n  #zhcard td.e { color: #9fd4ff; width: 46%; font-family: Consolas, monospace; }\n  #zhcard .tip { margin-top: 8px; color: #6f7d8c; font-size: 11px; }\n";
+    document.head.appendChild(st);
+
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "F1") {
+        e.preventDefault();
+        const on = box.style.display === "block";
+        box.style.display = on ? "none" : "block";
+      }
+    });
+  })();
+
+  /* ---------- 中文字幕条 ---------- */
+  (function subtitles() {
+    const bar = document.createElement("div");
+    bar.id = "subs";
+    bar.innerHTML = '<div class="cn"></div><div class="en"></div>';
+    document.body.appendChild(bar);
+
+    const st = document.createElement("style");
+    st.textContent = [
+      "#subs{position:absolute;left:50%;bottom:5vh;transform:translateX(-50%);",
+      "max-width:min(760px,88vw);display:none;z-index:25;text-align:center;",
+      "padding:10px 22px;border-radius:12px;background:rgba(8,11,15,.82);",
+      "border:1px solid rgba(120,140,160,.25);box-shadow:0 10px 30px rgba(0,0,0,.55);",
+      "backdrop-filter:blur(3px);pointer-events:none;}",
+      "#subs .cn{font-size:19px;line-height:1.55;color:#f2f6fa;letter-spacing:.5px;",
+      "text-shadow:0 2px 6px rgba(0,0,0,.8);}",
+      "#subs .en{font-size:11px;line-height:1.5;color:#7f8d9c;margin-top:5px;",
+      "font-family:Consolas,monospace;letter-spacing:.2px;}"
+    ].join("");
+    document.head.appendChild(st);
+
+    let last = "";
+    let lastAt = 0;
+
+    async function poll() {
+      try {
+        const d = await fetch("/api/say").then((r) => r.json());
+        const raw = d && d.t;
+        if (!raw) return;
+        if (raw !== last) {
+          last = raw;
+          lastAt = Date.now();
+          const zh = window.DE_LOOKUP ? window.DE_LOOKUP(raw) : "";
+          const cn = bar.querySelector(".cn");
+          const en = bar.querySelector(".en");
+          if (zh) {
+            cn.textContent = zh;
+            en.textContent = raw.replace(/<br\s*\/?>/gi, " · ").replace(/\^/g, " · ");
+            bar.style.display = "block";
+          } else {
+            // 没有译文的句子就原样显示，避免"吞字幕"
+            cn.textContent = "";
+            en.textContent = window.DE_NORM ? window.DE_NORM(raw).toLowerCase() : raw;
+            bar.style.display = "block";
+          }
+        } else if (Date.now() - lastAt > 7000) {
+          bar.style.display = "none";   // 句子该消失了
+        }
+      } catch (e) {}
+    }
+    setInterval(poll, 300);
+  })();
+</script>
+<script src="frz.js?v=9"></script>
+<script>
+/* ------------------------------------------------------------------
+ * 手机开房页：房主自己就是 P1，用触屏手柄玩，画面通过 WebRTC 推给好友。
+ *
+ * 手柄沿用手机端已经在用的 vendor/ruffle-touch（不自己造轮子），键位按 P1：
+ *   方向 = Arrow 键；攻 = KeyN(78)；跳 = KeyM(77)   （与 AS3 存档 custom_keys 一致）
+ * 空白处轻点 = 菜单点击，交给宿主页原有的 #clicklayer（它已经在整页接管 pointerdown）。
+ * 房号条：进页面自动开房，显示房号，点一下复制。
+ * ------------------------------------------------------------------ */
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+
+  /* ================= 房号条 ================= */
+  var bar = document.createElement("div");
+  bar.id = "de-room-bar";
+  bar.innerHTML = '<span class="lbl">房号</span><b id="de-room-code">…</b><span class="st" id="de-room-state">开房中</span>';
+  document.body.appendChild(bar);
+
+  var hint = document.createElement("div");
+  hint.id = "de-rotate";
+  hint.textContent = "把手机横过来 ↻ 画面更大";
+  document.body.appendChild(hint);
+
+  function roomText() { var r = $("room"); return r ? (r.textContent || "").trim() : ""; }
+  function peerText() { var p = $("v-peer"); return p ? (p.textContent || "").trim() : ""; }
+  function isRoom(t) { return /^de[0-9a-z]+-[0-9a-z]+$/i.test(t); }
+
+  function sync() {
+    var t = roomText(), c = $("de-room-code"), s = $("de-room-state");
+    if (!c || !s) return;
+    if (isRoom(t)) c.textContent = t;
+    else if (/失败/.test(t)) c.textContent = "开房失败";
+    else if (/重试/.test(t)) c.textContent = "重连中";
+    else c.textContent = "…";
+    var p = peerText();
+    s.textContent = /未连接/.test(p) ? "等好友" : p;
+  }
+  var mo = new MutationObserver(sync);
+  ["room", "v-peer", "room-hint"].forEach(function (id) {
+    var el = $(id);
+    if (el) mo.observe(el, { childList: true, characterData: true, subtree: true });
+  });
+  sync();
+
+  bar.addEventListener("click", function () {
+    var t = roomText();
+    if (isRoom(t)) {
+      try { navigator.clipboard.writeText(t).catch(function () {}); } catch (e) {}
+      var s = $("de-room-state");
+      if (s) { s.textContent = "已复制"; setTimeout(sync, 1400); }
+      return;
+    }
+    var r = $("room"); if (r) r.click();       /* 没开房或失败 → 重开 */
+  });
+
+  /* 手机房主不该还要去找远处的按钮：进来就自动开房 */
+  setTimeout(function () { if (!isRoom(roomText())) { var r = $("room"); if (r) r.click(); } }, 1000);
+
+  /* ================= 触屏手柄（P1） ================= */
+  function boot() {
+    if (!window.RuffleTouch || window.__dePad) return;
+    var pad = new window.RuffleTouch({ container: document.body });
+    pad.settings.mappingPreset = "custom";
+    pad.settings.customMappings = {
+      up:    { key: "ArrowUp",    code: "ArrowUp",    keyCode: 38, label: "▲" },
+      down:  { key: "ArrowDown",  code: "ArrowDown",  keyCode: 40, label: "▼" },
+      left:  { key: "ArrowLeft",  code: "ArrowLeft",  keyCode: 37, label: "◀" },
+      right: { key: "ArrowRight", code: "ArrowRight", keyCode: 39, label: "▶" },
+      z:     { key: "n", code: "KeyN", keyCode: 78, label: "攻" },
+      x:     { key: "m", code: "KeyM", keyCode: 77, label: "跳" },
+      space: { key: "n", code: "KeyN", keyCode: 78, label: "攻" },
+      enter: { key: "m", code: "KeyM", keyCode: 77, label: "跳" }
+    };
+    pad.keyDefinitions = pad.getEffectiveMappings();
+    pad.saveSettings();
+    pad.updateButtonLabels();
+    try {
+      if (pad.openSwfBtn) pad.openSwfBtn.style.display = "none";
+      if (pad.downloadBtn) pad.downloadBtn.style.display = "none";
+    } catch (e) {}
+    /* 震动调小（库默认 20ms，手机上像整机弹一下） */
+    pad.triggerHaptic = function () {
+      if (this.settings && this.settings.haptic === false) return;
+      try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {}
+    };
+    window.__dePad = pad;
+    document.body.classList.add("de-touch");
+
+    /* 手柄尺寸：横屏按视口高度算，别把 4:3 画面挤没了 */
+    var st = document.createElement("style");
+    st.textContent = [
+      ".action-space,.action-enter{display:none !important}",
+      ".ruffle-touch-btn:active{transform:scale(.975) !important}",
+      "@media (orientation:landscape){",
+        ".ruffle-touch-overlay{padding:max(6px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right))",
+          " max(6px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left)) !important}",
+        ".ruffle-touch-dpad{width:min(34vh,17vw) !important;height:min(34vh,17vw) !important}",
+        ".ruffle-touch-dpad .dpad-btn{font-size:min(3.2vh,17px) !important}",
+        ".ruffle-touch-actions .action-group{flex-direction:column-reverse !important;align-items:flex-end !important;",
+          "gap:min(2.2vh,11px) !important}",
+        ".action-z,.action-x{width:min(19vh,10vw) !important;height:min(19vh,10vw) !important;",
+          "font-size:min(3.4vh,19px) !important}",
+        ".action-x{margin-right:min(8vh,4.5vw) !important}",
+        "#de-room-bar{font-size:12px !important;padding:4px 12px !important}",
+      "}",
+      "@media (orientation:portrait){",
+        ".ruffle-touch-dpad{width:min(24vh,30vw) !important;height:min(24vh,30vw) !important}",
+        ".action-z,.action-x{width:min(13vh,17vw) !important;height:min(13vh,17vw) !important}",
+      "}"
+    ].join("");
+    document.head.appendChild(st);
+  }
+  var tries = 0;
+  (function waitPad() {
+    if (window.RuffleTouch) { boot(); }
+    if (window.__dePad || ++tries > 120) return;
+    setTimeout(waitPad, 100);
+  })();
+})();
+
+/* ------------------------------------------------------------------
+ * 攻 / 跳（双指同按 = P1 必杀 N+M）
+ * 与手机好友页同一套实现：命中用事件自带 target，监听全 passive，
+ * 每个键维护「持有者集合」（每根手指/每个指针算一个），轻点保底 90ms。
+ * ------------------------------------------------------------------ */
+(function () {
+  var BTN_OF  = { "KeyN": ".action-z", "KeyM": ".action-x" };
+  var KEYCODE = { "KeyN": 78, "KeyM": 77 };
+  var KEYCHR  = { "KeyN": "n", "KeyM": "m" };
+  var MIN_HOLD = 90;
+
+  var holders = { KeyN: {}, KeyM: {} };
+  var down = { KeyN: false, KeyM: false };
+  var pressAt = { KeyN: 0, KeyM: 0 };
+  var pendingUp = { KeyN: null, KeyM: null };
+  var touchCode = {}, ptrCode = {};
+  var pad = null;
+
+  var DBG = /[?&]pad-dbg=1/.test(location.search);
+  var dbgBox = null, dbgLines = [];
+  function dbg(s) {
+    if (!DBG) return;
+    dbgLines.push(s);
+    if (dbgLines.length > 8) dbgLines.shift();
+    if (!dbgBox) {
+      dbgBox = document.createElement("pre");
+      dbgBox.style.cssText = "position:fixed;left:0;bottom:0;z-index:10020;margin:0;padding:4px 6px;" +
+        "background:rgba(0,0,0,.8);color:#7fe;font:10px/1.35 Consolas,monospace;pointer-events:none;white-space:pre";
+      document.body.appendChild(dbgBox);
+    }
+    dbgBox.textContent = dbgLines.join("\n");
+  }
+
+  function codeOfEl(el) {
+    while (el && el.classList) {
+      if (el.classList.contains("action-z")) return "KeyN";
+      if (el.classList.contains("action-x")) return "KeyM";
+      el = el.parentElement;
+    }
+    return null;
+  }
+  function codeAtPoint(x, y) { return codeOfEl(document.elementFromPoint(x, y)); }
+
+  function emit(code, on) {
+    var ev;
+    try {
+      ev = new KeyboardEvent(on ? "keydown" : "keyup", {
+        key: KEYCHR[code], code: code, keyCode: KEYCODE[code], which: KEYCODE[code],
+        bubbles: true, cancelable: true
+      });
+    } catch (e) {
+      ev = document.createEvent("Event");
+      ev.initEvent(on ? "keydown" : "keyup", true, true);
+      ev.code = code; ev.keyCode = KEYCODE[code]; ev.which = KEYCODE[code]; ev.key = KEYCHR[code];
+    }
+    window.dispatchEvent(ev);
+    var el = document.querySelector(BTN_OF[code]);
+    if (el) el.classList.toggle("active", on);
+    dbg((on ? "keydown " : "keyup ") + code);
+  }
+
+  function applyCode(code) {
+    var want = false;
+    for (var k in holders[code]) { want = true; break; }
+    if (want) {
+      if (pendingUp[code]) { clearTimeout(pendingUp[code]); pendingUp[code] = null; }
+      if (down[code]) return;
+      down[code] = true;
+      pressAt[code] = (window.performance || Date).now();
+      emit(code, true);
+      pad = window.__dePad;
+      if (pad && pad.triggerHaptic) { try { pad.triggerHaptic(); } catch (e) {} }
+      return;
+    }
+    if (!down[code]) return;
+    down[code] = false;
+    var held = (window.performance || Date).now() - pressAt[code];
+    var wait = MIN_HOLD - held;
+    if (wait > 0) {
+      pendingUp[code] = setTimeout(function () {
+        pendingUp[code] = null;
+        for (var k2 in holders[code]) { return; }
+        emit(code, false);
+      }, wait);
+    } else {
+      emit(code, false);
+    }
+  }
+
+  function hold(id, code) { dbg("hold " + id + " " + code); holders[code][id] = 1; applyCode(code); }
+  function drop(id, code) { if (holders[code][id]) { dbg("drop " + id + " " + code); delete holders[code][id]; applyCode(code); } }
+
+  function onTouch(e) {
+    var i, t, id, code, ch, all;
+    if (e.type === "touchstart") {
+      ch = e.changedTouches || [];
+      for (i = 0; i < ch.length; i++) {
+        t = ch[i]; id = "t" + t.identifier;
+        code = codeOfEl(t.target) || codeAtPoint(t.clientX, t.clientY);
+        dbg("touchstart " + id + " -> " + (code || "none"));
+        if (code && touchCode[id] !== code) { touchCode[id] = code; hold(id, code); }
+      }
+    } else if (e.type === "touchend" || e.type === "touchcancel") {
+      ch = e.changedTouches || [];
+      for (i = 0; i < ch.length; i++) {
+        id = "t" + ch[i].identifier;
+        dbg(e.type + " " + id);
+        if (touchCode[id]) { drop(id, touchCode[id]); delete touchCode[id]; }
+      }
+    } else {
+      all = e.touches || [];
+      for (i = 0; i < all.length; i++) {
+        t = all[i]; id = "t" + t.identifier;
+        if (!touchCode[id]) continue;
+        code = codeAtPoint(t.clientX, t.clientY);
+        if (code && code !== touchCode[id]) { drop(id, touchCode[id]); touchCode[id] = code; hold(id, code); }
+      }
+    }
+  }
+  var TOPTS = { passive: true, capture: true };
+  document.addEventListener("touchstart", onTouch, TOPTS);
+  document.addEventListener("touchmove", onTouch, TOPTS);
+  document.addEventListener("touchend", onTouch, TOPTS);
+  document.addEventListener("touchcancel", onTouch, TOPTS);
+
+  function onPointerDown(e) {
+    var id = "p" + e.pointerId;
+    var code = codeOfEl(e.target) || codeAtPoint(e.clientX, e.clientY);
+    dbg("pointerdown " + id + " -> " + (code || "none"));
+    if (!code) return;
+    if (ptrCode[id] !== code) { ptrCode[id] = code; hold(id, code); }
+  }
+  function onPointerEnd(e) {
+    var id = "p" + e.pointerId;
+    if (ptrCode[id]) { dbg("pointerend " + id); drop(id, ptrCode[id]); delete ptrCode[id]; }
+  }
+  var POPT = { passive: true, capture: true };
+  document.addEventListener("pointerdown", onPointerDown, POPT);
+  document.addEventListener("pointerup", onPointerEnd, POPT);
+  document.addEventListener("pointercancel", onPointerEnd, POPT);
+
+  function mount() {
+    [".action-z", ".action-x"].forEach(function (sel) {
+      var el = document.querySelector(sel);
+      if (el && el.parentNode) el.parentNode.replaceChild(el.cloneNode(true), el);
+    });
+    dbg("ready");
+  }
+  var n = 0;
+  (function waitBtns() {
+    if (document.querySelector(".action-z")) { mount(); return; }
+    if (++n > 120) return;
+    setTimeout(waitBtns, 100);
+  })();
+})();
+</script></body>
+</html>
