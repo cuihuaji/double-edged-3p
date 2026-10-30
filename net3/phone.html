@@ -634,6 +634,9 @@
 <style>
   /* 手机页不要桌面那套调试叠层：左下角的监视条正好压在 ▼ 上 */
   #frz, #diag-root { display: none !important; }
+  /* 桌面侧栏（房号/连接码/参数）在手机页会挡住画面和手柄，整块摘掉；
+     连不上时下面的手机会话层会把房号卡片重新弹出来重试。 */
+  #panel { display: none !important; }
   #de-status { position: fixed; left: 50%; top: max(8px, env(safe-area-inset-top)); transform: translateX(-50%);
     z-index: 10001; padding: 5px 12px; border-radius: 999px; background: rgba(8,12,18,.72);
     color: #dfe8f2; font: 12px/1.3 'Microsoft YaHei', system-ui, sans-serif; white-space: nowrap;
@@ -666,6 +669,16 @@
       if (!pill || !txt) return;
       pill.textContent = short(txt);
       pill.className = ok ? "ok" : "";
+      /* 连不上/连断了就把房号卡片弹回来，直接重试（#panel 在手机页已摘掉） */
+      if (/失败|断开|重试/.test(txt)) {
+        var ov = document.getElementById("de-join");
+        var inp = document.getElementById("de-join-input");
+        var r = document.getElementById("room");
+        if (ov && ov.className === "hide") ov.className = "";
+        if (inp && !inp.value && r) inp.value = r.value;
+        var b = document.getElementById("de-join-btn");
+        if (b) b.textContent = "重试";
+      }
     }
     if (hint) {
       set(hint.textContent, false);
@@ -733,5 +746,99 @@
     else setTimeout(function () { if (inp) inp.focus(); }, 300);
   })();
 </script>
-</body>
-</html>
+<script>
+/* ------------------------------------------------------------------
+ * 双指同按（攻 + 跳 = 必杀）
+ * 库的按钮各挂 pointerdown/up，真机上第二根手指常把第一根的 pointer 取消掉，
+ * 于是攻刚按下就被松掉，必杀按不出来。这里把两个动作键换成「按落点统一判定」：
+ * 每次 touch 事件算出当前所有手指压在哪几个键上，只补发差量，任意多指都成立。
+ * 顺带克隆掉库原来的监听器，避免一次按压发两次键。
+ * ------------------------------------------------------------------ */
+(function () {
+  var CODES = { 'action-z': 'KeyG', 'action-x': 'KeyH' };
+  var bindCode = { 'KeyG': 71, 'KeyH': 72 };
+  var down = {};
+  var pad = null;
+
+  function codeAt(x, y) {
+    var el = document.elementFromPoint(x, y);
+    while (el) {
+      if (el.classList && (el.classList.contains('action-z') || el.classList.contains('action-x'))) {
+        return { code: CODES[el.classList.contains('action-z') ? 'action-z' : 'action-x'], el: el };
+      }
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function setDown(code, el, on) {
+    if (!!down[code] === on) return;
+    down[code] = on;
+    if (el) el.classList.toggle('active', on);
+    var ev = new KeyboardEvent(on ? 'keydown' : 'keyup', {
+      key: code === 'KeyG' ? 'g' : 'h', code: code, keyCode: bindCode[code],
+      which: bindCode[code], bubbles: true, cancelable: true
+    });
+    window.dispatchEvent(ev);
+    if (on && pad && pad.triggerHaptic) { try { pad.triggerHaptic(); } catch (e) {} }
+  }
+
+  function sync(touches) {
+    var want = {};
+    for (var i = 0; i < touches.length; i++) {
+      var hit = codeAt(touches[i].clientX, touches[i].clientY);
+      if (hit) want[hit.code] = hit;
+    }
+    for (var c in CODES) { /* noop: 保持结构清晰 */ }
+    ['KeyG', 'KeyH'].forEach(function (code) {
+      if (want[code]) setDown(code, want[code].el, true);
+      else setDown(code, document.querySelector('.action-' + (code === 'KeyG' ? 'z' : 'x')), false);
+    });
+  }
+
+  function onTouch(e) {
+    if (e.touches && e.touches.length) {
+      for (var i = 0; i < e.touches.length; i++) {
+        var hit = codeAt(e.touches[i].clientX, e.touches[i].clientY);
+        if (hit) { if (e.cancelable) e.preventDefault(); break; }
+      }
+    }
+    sync(e.touches || []);
+  }
+
+  function boot() {
+    pad = window.__dePad;
+    if (!pad) return false;
+    /* 克隆两个动作键：库的 pointer 监听器随之丢掉，只留我们这套 */
+    ['.action-z', '.action-x'].forEach(function (sel) {
+      var el = document.querySelector(sel);
+      if (el && el.parentNode) el.parentNode.replaceChild(el.cloneNode(true), el);
+    });
+    var opts = { passive: false, capture: true };
+    document.addEventListener('touchstart', onTouch, opts);
+    document.addEventListener('touchmove', onTouch, opts);
+    document.addEventListener('touchend', onTouch, opts);
+    document.addEventListener('touchcancel', onTouch, opts);
+    /* 桌面上用鼠标也能按 */
+    document.addEventListener('pointerdown', function (e) {
+      if (e.pointerType === 'touch') return;
+      var hit = codeAt(e.clientX, e.clientY);
+      if (hit) { e.preventDefault(); setDown(hit.code, hit.el, true); }
+    }, true);
+    document.addEventListener('pointerup', function (e) {
+      if (e.pointerType === 'touch') return;
+      ['KeyG', 'KeyH'].forEach(function (code) {
+        setDown(code, document.querySelector('.action-' + (code === 'KeyG' ? 'z' : 'x')), false);
+      });
+    }, true);
+    return true;
+  }
+
+  var tries = 0;
+  (function waitPad() {
+    if (boot() || ++tries > 100) return;
+    setTimeout(waitPad, 100);
+  })();
+})();
+</script>
+</body></html>
