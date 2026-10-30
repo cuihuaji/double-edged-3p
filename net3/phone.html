@@ -519,8 +519,8 @@
           " max(6px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left)) !important}",
         ".ruffle-touch-dpad{width:min(38vh,19vw) !important;height:min(38vh,19vw) !important}",
         ".ruffle-touch-dpad .dpad-btn{font-size:min(3.4vh,18px) !important}",
-        /* 攻/跳竖着错开，横屏下不占横向空间，也贴近官方 Touchy 的斜位 */
-        ".ruffle-touch-actions .action-group{flex-direction:column !important;align-items:flex-end !important;",
+        /* 攻/跳竖着错开：官方 Touchy 是跳在上、攻在下（DOM 里 攻 在前，所以用 column-reverse） */
+        ".ruffle-touch-actions .action-group{flex-direction:column-reverse !important;align-items:flex-end !important;",
           "gap:min(2.4vh,12px) !important}",
         ".action-z,.action-x{width:min(21vh,11vw) !important;height:min(21vh,11vw) !important;",
           "font-size:min(3.6vh,20px) !important}",
