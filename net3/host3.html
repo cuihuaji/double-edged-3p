@@ -106,6 +106,7 @@
 <script src="peerjs.min.js"></script>
 <script src="diag.js?v=3"></script>
 <script src="subs.js?v=10"></script>
+<script src="pad.js?v=1"></script>
 <script src="lock.js?v=8"></script>
 <script>
 (function () {
@@ -198,6 +199,22 @@
   window.addEventListener("keyup", (e) => {
     if (P1KEYS.indexOf(e.code) >= 0) { e.preventDefault(); hostKey(false, e.code); }
   }, true);
+
+  /* ===== 手机触屏手柄：房主端用 P1 键位 =====
+   * 键位读自游戏存档里的 custom_keys（AMF3 解出 38/40/37/39/78/77），
+   * 即 方向键 + N 攻击 + M 跳；不是猜的。布局照 Nitrome Touchy 官方版。
+   * 手指点在空白处会换算成画面 0..1 坐标 → hostClick，菜单照样能点。 */
+  if (window.DE_PAD) {
+    window.__deHostPad = window.DE_PAD({
+      up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight",
+      attack: "KeyN", jump: "KeyM",
+      hint: "左手方向 · 右手攻/跳 · 同按＝必杀",
+      area: function () { return iframe; },
+      aspect: 880 / 640,
+      onKey: function (code, isDown) { hostKey(isDown === true, code); },
+      onTap: function (fx, fy) { hostClick(fx, fy); }
+    });
+  }
 
   /* 让 iframe 显示尺寸跟随窗口，但内部视口恒为 880x640 */
   function fitIframe() {
@@ -573,6 +590,9 @@
       };
       conn.on("data", (data) => {
         // 好友回传的输入事件 → 注入 iframe（房主本地跑真游戏）
+        /* 手机好友的「点一下」：直接给归一化坐标，不猜两端窗口尺寸
+         * （手机屏和房主屏差太多，老的 clientX/clientY 转发会点偏） */
+        if (data && data.sys === "tap") { hostClick(data.fx, data.fy); return; }
         if (!data || !data.evt) return;
         try {
           const w = iframe.contentWindow, d = iframe.contentDocument;

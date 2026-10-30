@@ -101,6 +101,7 @@
 <script src="peerjs.min.js"></script>
 <script src="diag.js?v=3"></script>
 <script src="subs.js?v=10"></script>
+<script src="pad.js?v=1"></script>
 <script src="lock.js?v=8"></script>
 <script>
 (function () {
@@ -290,6 +291,38 @@
       } else {
         conn.send({ evt: e.type, x: e.clientX, y: e.clientY, button: e.button, buttons: e.buttons });
       }
+    }
+    /* 手机好友：触屏手柄 → 走和键盘完全相同的 keydown/keyup 报文，
+     * 键位用 P2 的 W/A/S/D + G(攻) + H(跳)（房主端对这几个码有专门白名单通道）。 */
+    function sendRaw(o) {
+      const all = (peer && peer.connections) || {};
+      for (const k in all) {
+        const c = all[k] && all[k][0];
+        if (c && c.open) { try { c.send(o); return true; } catch (e) {} }
+      }
+      return false;
+    }
+    if (window.DE_PAD) {
+      const KC = { KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68, KeyG: 71, KeyH: 72 };
+      /* 手机上没鼠标：视频铺满整屏，手柄浮在上面 */
+      try {
+        const s2 = document.createElement("style");
+        s2.textContent = "body.de-touch #rv{position:fixed !important;left:0 !important;top:0 !important;" +
+          "width:100vw !important;height:100vh !important;object-fit:contain !important;background:#000}";
+        document.head.appendChild(s2);
+        document.body.classList.add("de-touch");
+      } catch (e) {}
+      window.__deJoinPad = window.DE_PAD({
+        up: "KeyW", down: "KeyS", left: "KeyA", right: "KeyD",
+        attack: "KeyG", jump: "KeyH",
+        hint: "左手方向 · 右手攻/跳 · 同按＝必杀",
+        area: function () { return document.getElementById("rv"); },
+        aspect: 880 / 640,
+        onKey: function (code, isDown) {
+          sendRaw({ evt: isDown === true ? "keydown" : "keyup", code: code, keyCode: KC[code] || 0, key: "" });
+        },
+        onTap: function (fx, fy) { sendRaw({ sys: "tap", fx: fx, fy: fy }); }
+      });
     }
     document.addEventListener("keydown", fwdInput, true);
     document.addEventListener("keyup", fwdInput, true);
