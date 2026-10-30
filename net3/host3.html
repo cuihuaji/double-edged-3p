@@ -450,43 +450,52 @@
           }
           const call = peer.call(conn.peer, mediaStream);
           window.__npCall = call;
-          /* ---- 画质：这里是画质差的两处根源 ----
-           * 1) 原来是 maxBitrate = 1.5M。像素画全是锐利边缘和高频细节，
-           *    1.5M 下编码器只能把它们糊成色块。
-           * 2) 原来是 degradationPreference = maintain-framerate：
-           *    一有拥塞就先砍分辨率，画面直接发虚。
-           * 这个游戏是 880×640 / 30fps 的像素画，分辨率远比流畅度重要，
-           * 所以改成保分辨率，并把码率上限抬到 6M（局域网/家宽足够）。
-           * contentHint = detail 让编码器优先保住空间细节而不是平滑掉。 */
+          /* ---- 画质 ----
+           * 实测根因：好友端只解到 330×240，而房主画布是 880×640。
+           * 编码器在带宽估算偏紧时会自己降分辨率，于是好友看到的是一张被缩小
+           * 4 倍再放大的图 —— 糊的主因，不是 CSS 滤波。
+           * 另一个坑：setParameters 必须在协商完成后再调。刚 call() 完时
+           * getParameters().encodings 是空的，写进去会被静默丢弃（旧代码就是这样
+           * 失效的：参数看着设了，实际还是默认值）。
+           * 所以：1) 显式钉住 scaleResolutionDownBy = 1；
+           *       2) 在 negotiationcompleted 与 0.8/2.5/6/12 秒反复重申；
+           *       3) 每 4 秒巡检时再兜一次（只调码率，绝不调分辨率）。 */
+          function npApplyQuality(sender, bitrate) {
+            if (!sender) return false;
+            try { if (sender.track) sender.track.contentHint = "detail"; } catch (e) {}
+            try {
+              const p = sender.getParameters();
+              p.degradationPreference = "maintain-resolution";
+              if (!p.encodings || !p.encodings.length) p.encodings = [{ active: true }];
+              const e0 = p.encodings[0];
+              e0.active = true;
+              e0.maxBitrate = bitrate;
+              e0.maxFramerate = 30;
+              e0.scaleResolutionDownBy = 1;      /* 关键：不许缩分辨率 */
+              e0.priority = "high";
+              try { e0.networkPriority = "high"; } catch (e) {}
+              const ret = sender.setParameters(p);
+              if (ret && ret.catch) ret.catch((err) => { window.__npQErr = String((err && err.message) || err); });
+              window.__npQuality = { bitrate: bitrate, degradation: "maintain-resolution", scale: 1 };
+              return true;
+            } catch (e) { window.__npQErr = String((e && e.message) || e); return false; }
+          }
+          window.__npApplyQuality = npApplyQuality;
           try {
             const pc = call && call.peerConnection;
             const sender = pc && pc.getSenders && pc.getSenders()[0];
             if (sender) {
-              try { if (sender.track) sender.track.contentHint = "detail"; } catch (e) {}
-              const p = sender.getParameters();
-              p.degradationPreference = "maintain-resolution";
-              if (!p.encodings || !p.encodings.length) p.encodings = [{}];
-              p.encodings[0].maxBitrate = 6000000;
-              p.encodings[0].maxFramerate = 30;
-              p.encodings[0].scaleResolutionDownBy = 1;
-              p.encodings[0].priority = "high";
-              sender.setParameters(p).catch(() => {});
-              window.__npQuality = { bitrate: 6000000, degradation: "maintain-resolution" };
-            }
-          } catch (e) {}
-
-          /* 自适应码率：慢链路就别硬顶 6M，否则队列堆积反而更卡。
-           * 每 4 秒看一次 outbound 统计，qualityLimitationReason 连续两次是
-           * bandwidth 就降一档；一直没受限就逐步爬回上限。 */
-          try {
-            const pc2 = call && call.peerConnection;
-            const snd = pc2 && pc2.getSenders && pc2.getSenders()[0];
-            if (snd && !window.__npQTimer) {
+              npApplyQuality(sender, 6000000);
+              if (pc) {
+                try { pc.addEventListener("negotiationcompleted", () => npApplyQuality(sender, 6000000)); } catch (e) {}
+                try { pc.addEventListener("signalingstatechange", () => npApplyQuality(sender, 6000000)); } catch (e) {}
+              }
+              [800, 2500, 6000, 12000].forEach((ms) => setTimeout(() => npApplyQuality(sender, 6000000), ms));
               let cur = 6000000, lowStreak = 0, okStreak = 0;
               window.__npQTimer = setInterval(async () => {
                 let st = null;
                 try {
-                  const rep = await snd.getStats();
+                  const rep = await sender.getStats();
                   rep.forEach((r) => { if (r.type === "outbound-rtp" && r.kind === "video") st = r; });
                 } catch (e) {}
                 if (!st) return;
@@ -495,17 +504,13 @@
                 let next = cur;
                 if (lowStreak >= 2 && cur > 1500000) next = Math.max(1500000, Math.round(cur / 2));
                 else if (okStreak >= 3 && cur < 6000000) next = Math.min(6000000, Math.round(cur * 1.5));
-                if (next !== cur) {
-                  cur = next; lowStreak = 0; okStreak = 0;
-                  try {
-                    const q = snd.getParameters();
-                    if (q.encodings && q.encodings[0]) { q.encodings[0].maxBitrate = cur; snd.setParameters(q).catch(() => {}); }
-                  } catch (e) {}
-                  window.__diag && window.__diag.report("media", "码率调整为 " + Math.round(cur / 1000) + "kbps", "受限原因：" + lim, "info");
-                }
-                window.__npQuality = { bitrate: cur, degradation: "maintain-resolution", reason: lim,
+                const changed = next !== cur;
+                if (changed) { cur = next; lowStreak = 0; okStreak = 0; }
+                npApplyQuality(sender, cur);
+                if (changed) window.__diag && window.__diag.report("media", "码率 " + Math.round(cur / 1000) + "kbps", "受限：" + lim, "info");
+                window.__npQuality = { bitrate: cur, degradation: "maintain-resolution", scale: 1, reason: lim,
                   w: st.frameWidth, h: st.frameHeight, fps: st.framesPerSecond,
-                  kbps: Math.round((st.bytesSent || 0) * 8 / 1000 / Math.max(1, (performance.now() - (st.timestamp || 8)) / 1000)) || undefined };
+                  resChanges: st.qualityLimitationResolutionChanges };
               }, 4000);
             }
           } catch (e) {}
@@ -519,7 +524,16 @@
           try { if (mediaStream) mediaStream.getTracks().forEach((t2) => t2.stop()); } catch (e) {}
           try { iframe.contentWindow.__npCapTrack = got.track; } catch (e) {}
           mediaStream = got.stream;
-          window.__npCall = peer.call(conn.peer, mediaStream);
+          const nc = peer.call(conn.peer, mediaStream);
+          window.__npCall = nc;
+          /* 重连出来的是新 sender，画质参数必须重新钉一遍（含不缩分辨率） */
+          try {
+            const ns = nc.peerConnection && nc.peerConnection.getSenders && nc.peerConnection.getSenders()[0];
+            if (ns && window.__npApplyQuality) {
+              window.__npApplyQuality(ns, 6000000);
+              [800, 2500, 6000].forEach((ms) => setTimeout(() => window.__npApplyQuality(ns, 6000000), ms));
+            }
+          } catch (e) {}
           return true;
         } catch (e) { return false; }
       };
