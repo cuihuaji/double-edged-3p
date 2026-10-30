@@ -110,8 +110,17 @@ window.DE_collect = function (w) {
     var pg = w.AVMPlayerPoki && w.AVMPlayerPoki._avmHandler && w.AVMPlayerPoki._avmHandler._playerglobal;
     var st = pg && pg._stage && pg._stage._stage;
     if (!st) return [];
-    /* 从舞台本身开始走，而不是从第 0 个子节点：气泡可能被加在舞台而不是 root 里 */
-    var root = st;
+    /* 舞台的 numChildren 不可靠（实测直接走 Stage 会一个节点都进不去），
+     * 所以显式枚举它的子节点作为起点；枚举不到才退回舞台本身。 */
+    var roots = [];
+    try {
+      var sn = st.numChildren || 0;
+      for (var si = 0; si < sn; si++) {
+        var sc = null; try { sc = st.getChildAt(si); } catch (e) {}
+        if (sc) roots.push(sc);
+      }
+    } catch (e) {}
+    if (!roots.length) roots.push(st);
     var out = [], seen = new Set();
     (function walk(o, d, effAlpha, vis) {
       if (!o || d > 10 || seen.has(o)) return;
@@ -145,7 +154,37 @@ window.DE_collect = function (w) {
         var c = null; try { c = o.getChildAt(i); } catch (e) {}
         if (c) walk(c, d + 1, ea, v);
       }
-    })(root, 0, 1, true);
+    })(roots[0], 0, 1, true);
+    for (var ri = 1; ri < roots.length; ri++) (function (rz) {
+      (function walk(o, d, effAlpha, vis) {
+        if (!o || d > 10 || seen.has(o)) return;
+        seen.add(o);
+        var al = 1; try { if (typeof o.alpha === "number") al = o.alpha; } catch (e) {}
+        var v = vis; try { if (o.visible === false) v = false; } catch (e) {}
+        var ea = effAlpha * (al >= 0 && al <= 1 ? al : 1);
+        var shown = v && ea > 0.05;
+        var pushed = false;
+        var ns; try { ns = Object.getOwnPropertyNames(o); } catch (e) { ns = []; }
+        if (ns.indexOf("$Bg_text") >= 0) {
+          var t1 = ""; try { t1 = o.$Bg_text; } catch (e) {}
+          if (typeof t1 === "string" && t1.trim() && shown) { out.push(t1.trim()); pushed = true; }
+        }
+        if (!pushed && ns.indexOf("_adaptee") >= 0) {
+          var t2 = deFieldText(o);
+          if (t2 && t2.trim() && shown && !dePlaceholder(t2)) out.push(t2.trim());
+        }
+        if (ns.indexOf("$BgspeechText") >= 0) {
+          var f2 = null; try { f2 = o.$BgspeechText; } catch (e) {}
+          var t3 = f2 ? deFieldText(f2) : "";
+          if (t3 && t3.trim() && shown && !dePlaceholder(t3)) out.push(t3.trim());
+        }
+        var n2 = 0; try { n2 = o.numChildren || 0; } catch (e) {}
+        for (var i2 = 0; i2 < n2; i2++) {
+          var c2 = null; try { c2 = o.getChildAt(i2); } catch (e) {}
+          if (c2) walk(c2, d + 1, ea, v);
+        }
+      })(rz, 0, 1, true);
+    })(roots[ri]);
     // 去重并按长度排序，长的（台词）优先
     var uniq = [];
     for (var i = 0; i < out.length; i++) if (uniq.indexOf(out[i]) < 0) uniq.push(out[i]);
