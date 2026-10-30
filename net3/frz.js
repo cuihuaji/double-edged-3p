@@ -90,6 +90,8 @@
         k: f.__lock.frames,
         extra: "phase=" + f.__lock.phase + " q=" + f.__lock.qLen +
                " rafErr=" + ((f.__rafErrs && f.__rafErrs.length) || 0) +
+               " st=" + (function () { var q = f.__perfStep; return q ? (Math.round(q.max) + "/" + q.over60) : "-"; })() +
+               " sb=" + (function () { var q = window.__perfSubs; return q ? (Math.round(q.max * 10) / 10) : "-"; })() +
             " cc=" + (f.__npContained || 0) +
             " np=" + (f.__npNumPlayers || 0) +
                " cap=" + encNow + " sent=" + encSent + " B=" + encBytes +
