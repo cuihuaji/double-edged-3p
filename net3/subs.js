@@ -113,13 +113,13 @@ window.DE_collect = function (w) {
     /* 舞台的 numChildren 不可靠（实测直接走 Stage 会一个节点都进不去），
      * 所以显式枚举它的子节点作为起点；枚举不到才退回舞台本身。 */
     var roots = [];
-    try {
-      var sn = st.numChildren || 0;
-      for (var si = 0; si < sn; si++) {
-        var sc = null; try { sc = st.getChildAt(si); } catch (e) {}
-        if (sc) roots.push(sc);
-      }
-    } catch (e) {}
+    /* 实测：Stage 的 numChildren 恒为 0，而 getChildAt(0) 正常（能摸到 433 个文本节点）。
+     * 所以不信 numChildren，按索引探到 null 为止。 */
+    for (var si = 0; si < 16; si++) {
+      var sc = null; try { sc = st.getChildAt(si); } catch (e) { sc = null; }
+      if (!sc) break;
+      roots.push(sc);
+    }
     if (!roots.length) roots.push(st);
     var out = [], seen = new Set();
     (function walk(o, d, effAlpha, vis) {
