@@ -105,7 +105,7 @@
 <script src="../net2/common.js"></script>
 <script src="peerjs.min.js"></script>
 <script src="diag.js?v=3"></script>
-<script src="subs.js?v=9"></script>
+<script src="subs.js?v=10"></script>
 <script src="lock.js?v=8"></script>
 <script>
 (function () {
@@ -281,6 +281,7 @@
   const deConns = [];
   let deLast = "";
   function deSample() {
+    const tSub = performance.now();
     let texts = [];
     try {
       const w = iframe.contentWindow;
@@ -301,6 +302,9 @@
         window.__diag && window.__diag.report("sub", "字幕缺词：" + s.slice(0, 42), "把这条原文发给开发者补进词表", "warn");
       }
     } catch (e) {}
+    const dtSub = performance.now() - tSub;
+    const pfSub = window.__perfSubs || (window.__perfSubs = { n: 0, sum: 0, max: 0 });
+    pfSub.n++; pfSub.sum += dtSub; if (dtSub > pfSub.max) pfSub.max = dtSub; pfSub.last = dtSub;
     if (line === deLast) return;
     deLast = line;
     if (window.DE_bar) window.DE_bar(line, 7000);
@@ -312,6 +316,20 @@
   try { window.__deSample = deSample; } catch (e) {}
   /* 一句中文都没出来的原文都记在这里：控制台敲 __subsMiss() 就能整份拷出来 */
   window.__subsMiss = function () { return Object.keys(window.__deMiss || {}); };
+  /* 卡顿定位：一句话读三个数字
+   *   subs  = 我的字幕轮询耗时
+   *   sweep = 我的守卫轮询耗时（在 iframe 里）
+   *   step  = 游戏每一步之间的实际间隔（真正的卡顿）
+   *   send  = 编码器受限原因（cpu/bandwidth/none） */
+  window.__perf = async function () {
+    const out = { subs: null, sweep: null, step: null, send: window.__npQuality || null };
+    const s = window.__perfSubs;
+    if (s) out.subs = { calls: s.n, avgMs: Math.round((s.sum / Math.max(1, s.n)) * 100) / 100, maxMs: Math.round(s.max * 100) / 100 };
+    try { out.sweep = iframe.contentWindow.__perfSweep || null; } catch (e) {}
+    try { out.step = iframe.contentWindow.__perfStep || null; } catch (e) {}
+    try { const L = iframe.contentWindow.__lock; out.lock = { phase: L.phase, qLen: L.qLen, contained: iframe.contentWindow.__npContained || 0 }; } catch (e) {}
+    return out;
+  };
 
   /* ---------- PeerJS：短房号 ---------- */
   function bindConn(conn) {

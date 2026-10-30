@@ -213,12 +213,41 @@ function dePlaceholder(s) {
  * 沿舞台树下降时累计「有效透明度」和可见性：气泡隐藏时 alpha 归零，
  * 文本却还留着上一句，只看文本会一直显示过期字幕。
  * 实测 441 个节点，一次遍历约 0.3ms，300ms 轮询没有压力。 */
-window.DE_collect = function (w) {
-  try {
-    var pg = w.AVMPlayerPoki && w.AVMPlayerPoki._avmHandler && w.AVMPlayerPoki._avmHandler._playerglobal;
-    var st = pg && pg._stage && pg._stage._stage;
-    if (!st) return [];
-    /* 舞台的 numChildren 实测恒为 0，getChildAt 却正常 → 按索引探到 null 为止 */
+/* 采集器：轻量优先。
+ * 实测这就是打怪卡顿的来源之一 —— 每 300ms 全树遍历 + getOwnPropertyNames
+ * （440+ 节点，怪一多还要涨）。改成「注册表」：全树只做一次，
+ * 把带 $BgspeechText 的气泡节点登记下来，之后每帧只读那两三个对象。 */
+window.DE_collect = (function () {
+  var reg = [];            /* 学到的气泡节点 */
+  var hudTexts = [];       /* HUD / 界面文字缓存 */
+  var scanAt = 0;          /* 上次全树扫描 */
+  var SCAN_MS = 1500;      /* 全树扫描间隔（发现新气泡、刷新 HUD） */
+
+  function clampA(v) {
+    if (typeof v !== "number" || !isFinite(v)) return 1;
+    if (v <= 0) return 0;
+    if (v >= 1) return 1;
+    return v;
+  }
+  function deHas(o, name) {
+    try { return o[name] !== undefined && o[name] !== null; } catch (e) { return false; }
+  }
+  /* 自身到祖先的有效透明度：气泡整体在淡入淡出 */
+  function effAlpha(n, maxUp) {
+    var a = 1, o = n, k = 0;
+    while (o && k < maxUp) {
+      var al = 1; try { if (typeof o.alpha === "number") al = clampA(o.alpha); } catch (e) {}
+      if (al <= 0) return 0;
+      if (al < 1) a *= al;
+      var vis = true; try { if (o.visible === false) vis = false; } catch (e) {}
+      if (!vis) return 0;
+      try { o = o.parent; } catch (e) { o = null; }
+      k++;
+    }
+    return a;
+  }
+
+  function scan(w, st) {
     var roots = [], sc;
     for (var si = 0; si < 16; si++) {
       sc = null; try { sc = st.getChildAt(si); } catch (e) { sc = null; }
@@ -226,18 +255,7 @@ window.DE_collect = function (w) {
       roots.push(sc);
     }
     if (!roots.length) roots.push(st);
-
-    /* 关键：AwayFl 淡出时 alpha 会走成负数（实测 -0.1）。
-     * 旧写法 `alpha>=0 && alpha<=1 ? alpha : 1` 把负数当成 1，
-     * 于是「上一句气泡」永远算可见 —— 第二个气泡的字幕就被它污染/压住了。 */
-    function clampA(v) {
-      if (typeof v !== "number" || !isFinite(v)) return 1;
-      if (v <= 0) return 0;
-      if (v >= 1) return 1;
-      return v;
-    }
-
-    var out = [], seen = new Set();
+    var seen = new Set(), found = [], hud = [];
     function walk(o, d, ea, vis) {
       if (!o || d > 10 || seen.has(o)) return;
       seen.add(o);
@@ -245,21 +263,14 @@ window.DE_collect = function (w) {
       try { if (o.visible === false) v = false; } catch (e) {}
       try { if (typeof o.alpha === "number") al = clampA(o.alpha); } catch (e) {}
       var eff = ea * al;
-      var anyShown = v && eff > 0.05;
-      var speechShown = v && eff > 0.35;   /* 正在淡出的气泡不算在说话 */
-      var ns; try { ns = Object.getOwnPropertyNames(o); } catch (e) { ns = []; }
-      var pushed = false;
-      if (ns.indexOf("$Bg_text") >= 0) {
-        var t1 = ""; try { t1 = o.$Bg_text; } catch (e) {}
-        if (typeof t1 === "string" && t1.trim() && anyShown) { out.push(t1.trim()); pushed = true; }
-      }
-      if (!pushed && ns.indexOf("$BgspeechText") >= 0) {
+      if (deHas(o, "$BgspeechText")) {
+        found.push(o);
         var f = null; try { f = o.$BgspeechText; } catch (e) {}
         var t3 = f ? deFieldText(f) : "";
-        if (t3 && t3.trim() && speechShown && !dePlaceholder(t3)) out.push(t3.trim());
-      } else if (!pushed && ns.indexOf("_adaptee") >= 0) {
-        var t2 = deFieldText(o);
-        if (t2 && t2.trim() && anyShown && !dePlaceholder(t2)) out.push(t2.trim());
+        if (t3 && t3.trim() && v && eff > 0.35 && !dePlaceholder(t3)) hud.push(t3.trim());
+      } else if (deHas(o, "$Bg_text")) {
+        var t1 = ""; try { t1 = o.$Bg_text; } catch (e) {}
+        if (typeof t1 === "string" && t1.trim() && v && eff > 0.05) hud.push(t1.trim());
       }
       var n = 0; try { n = o.numChildren || 0; } catch (e) {}
       for (var i = 0; i < n; i++) {
@@ -268,13 +279,44 @@ window.DE_collect = function (w) {
       }
     }
     for (var ri = 0; ri < roots.length; ri++) walk(roots[ri], 0, 1, true);
-
+    reg = found;
     var uniq = [];
-    for (var k = 0; k < out.length; k++) if (uniq.indexOf(out[k]) < 0) uniq.push(out[k]);
-    uniq.sort(function (x, y) { return y.length - x.length; });
-    return uniq;
-  } catch (e) { return []; }
-};/* ---- 匹配：支持打字机（气泡逐字出现）----
+    for (var k = 0; k < hud.length; k++) if (uniq.indexOf(hud[k]) < 0) uniq.push(hud[k]);
+    hudTexts = uniq;
+    scanAt = Date.now();
+  }
+
+  return function (w) {
+    try {
+      var pg = w.AVMPlayerPoki && w.AVMPlayerPoki._avmHandler && w.AVMPlayerPoki._avmHandler._playerglobal;
+      var st = pg && pg._stage && pg._stage._stage;
+      if (!st) return [];
+      var now = Date.now();
+      var out = [];
+
+      /* 1) 已登记的气泡：O(气泡数)，通常 1~3 个对象 */
+      for (var i = reg.length - 1; i >= 0; i--) {
+        var n = reg[i], alive = true;
+        try { alive = !!n.parent; } catch (e) { alive = false; }
+        if (!alive) { reg.splice(i, 1); continue; }
+        var f = null; try { f = n.$BgspeechText; } catch (e) {}
+        var tx = f ? deFieldText(f) : "";
+        if (!tx || !tx.trim() || dePlaceholder(tx)) continue;
+        if (effAlpha(n, 10) > 0.35) out.push(tx.trim());
+      }
+
+      /* 2) 首次、找不到气泡、或超过间隔 → 全树扫一次 */
+      if (!reg.length || now - scanAt > SCAN_MS) scan(w, st);
+
+      /* 3) HUD 文本来自最近一次扫描的缓存 */
+      for (var j = 0; j < hudTexts.length; j++) {
+        if (out.indexOf(hudTexts[j]) < 0) out.push(hudTexts[j]);
+      }
+      out.sort(function (x, y) { return y.length - x.length; });
+      return out;
+    } catch (e) { return []; }
+  };
+})();/* ---- 匹配：支持打字机（气泡逐字出现）----
  * 屏幕上只有半句时，用「屏幕文本是词条前缀」来认定是同一条台词。 */
 window.DE_MATCH = function (raw) {
   try {

@@ -108,7 +108,21 @@
   }, 500);
 
   /* ---- 单步推进：排空一次队列 = 一帧游戏 ---- */
+  var perfLastStep = 0;
   function stepOnce() {
+    /* 卡顿定位：记录两次步进之间的真实间隔。33.3ms 是稳态，
+     * 出现 80ms+ 说明这一帧真的被拖住了（不管是被谁的代码）。 */
+    try {
+      var pn = performance.now();
+      if (perfLastStep) {
+        var gap = pn - perfLastStep;
+        var pp = window.__perfStep || (window.__perfStep = { n: 0, max: 0, over60: 0, sum: 0 });
+        pp.n++; pp.sum += gap; if (gap > pp.max) pp.max = gap; if (gap > 60) pp.over60++;
+        pp.avg = Math.round((pp.sum / pp.n) * 10) / 10; pp.max = Math.round(pp.max * 10) / 10;
+        if (pp.n > 900) { pp.n = 0; pp.sum = 0; pp.max = 0; pp.over60 = 0; }
+      }
+      perfLastStep = pn;
+    } catch (e) {}
     L.vnow += STEP;
     var cur = q; q = [];
     var ran = 0;
@@ -609,24 +623,55 @@
 (function () {
   var contained = 0, installed = 0, npFixed = 0;
 
+  var deGame = null, deGameLabel = "";
+
+  function deHas(o, name) {
+    try { return o[name] !== undefined && o[name] !== null; } catch (e) { return false; }
+  }
+
+  function deFindGame(root) {
+    var found = null, seen = new Set();
+    (function walk(o, d) {
+      if (!o || found || d > 8 || seen.has(o)) return;
+      seen.add(o);
+      if (deHas(o, "$BgtheGame")) { try { found = o.$BgtheGame; } catch (e) {} return; }
+      var n = 0; try { n = o.numChildren || 0; } catch (e) {}
+      for (var i = 0; i < n; i++) { var c = null; try { c = o.getChildAt(i); } catch (e) {} if (c) walk(c, d + 1); }
+    })(root, 0);
+    return found;
+  }
+
+  function deClampBaddies(game, lim) {
+    var mid = null; try { mid = game.$BgmidLayer; } catch (e) {}
+    if (!mid) return 0;
+    var n = 0; try { n = mid.numChildren || 0; } catch (e) {}
+    var fixed = 0;
+    for (var i = 0; i < n; i++) {
+      var c = null; try { c = mid.getChildAt(i); } catch (e) {}
+      if (!c) continue;
+      var ap = null; try { ap = c.$BgattackPlayer; } catch (e) { continue; }
+      if (typeof ap === "number" && (ap < 1 || ap > lim)) { try { c.$BgattackPlayer = 1; fixed++; } catch (e) {} }
+    }
+    if (fixed) window.__npClamped = (window.__npClamped || 0) + fixed;
+    return fixed;
+  }
+
   function sweep() {
+    var t0 = (typeof performance !== "undefined" && performance.now) ? performance.now() : 0;
     var A = window.AVMPlayerPoki;
     if (!A || !A._avmHandler) return;
     var pg = A._avmHandler._playerglobal;
     var root = pg && pg._stage && pg._stage._stage && pg._stage._stage.getChildAt(0);
     if (!root) return;
 
-    var game = null, baddies = [], seen = [];
-    (function walk(o, d) {
-      if (!o || d > 8) return;
-      if (seen.indexOf(o) >= 0) return;
-      seen.push(o);
-      var ns; try { ns = Object.getOwnPropertyNames(o); } catch (e) { return; }
-      if (!game && ns.indexOf("$BgtheGame") >= 0) { try { game = o.$BgtheGame; } catch (e) {} }
-      if (ns.indexOf("$BgattackPlayer") >= 0 && ns.indexOf("$Bgalive") >= 0) baddies.push(o);
-      var n = 0; try { n = o.numChildren || 0; } catch (e) {}
-      for (var i = 0; i < n; i++) { var c = null; try { c = o.getChildAt(i); } catch (e) {} if (c) walk(c, d + 1); }
-    })(root, 0);
+    /* 只在关卡切换时找一次 theGame，之后一直复用。
+     * 原来每 500ms 全树走一遍 + getOwnPropertyNames + seen.indexOf（O(n²)），
+     * 怪一多（每只怪又带十几个子节点）就成了肉眼可见的顿。 */
+    var label = ""; try { label = root.currentLabel || ""; } catch (e) {}
+    if (label !== deGameLabel) { deGame = null; deGameLabel = label; }
+    if (label === "the_game" && !deGame) deGame = deFindGame(root);
+    var game = deGame;
+    var baddies = [];
 
     /* 1) 玩家数：以 PLAYER SELECT 的选择为准
      * 实测：单人模式进关后 numPlayers 也是 3，healthBarP2.alpha 被置 1，
@@ -666,15 +711,17 @@
       }
     }
 
-    /* 2) attackPlayer 夹回 [1, numPlayers] */
-    var lim = 2;
-    if (game) { try { lim = game.$BgnumPlayers || 2; } catch (e) {} }
-    for (var b = 0; b < baddies.length; b++) {
-      var ap = null; try { ap = baddies[b].$BgattackPlayer; } catch (e) { continue; }
-      if (typeof ap === "number" && (ap < 1 || ap > lim)) {
-        try { baddies[b].$BgattackPlayer = 1; window.__npClamped = (window.__npClamped || 0) + 1; } catch (e) {}
-      }
+    /* 2) attackPlayer 夹回 [1, numPlayers]：直接扫 midLayer 的孩子，
+     *    十几只怪而已，不再为了找怪遍历全树。 */
+    if (game) {
+      var lim = 2; try { lim = game.$BgnumPlayers || 2; } catch (e) {}
+      if (lim < 1) lim = 1;
+      deClampBaddies(game, lim);
     }
+
+    var dt = (typeof performance !== "undefined" && performance.now) ? performance.now() - t0 : 0;
+    var pf = window.__perfSweep || (window.__perfSweep = { n: 0, sum: 0, max: 0 });
+    pf.n++; pf.sum += dt; if (dt > pf.max) pf.max = dt; pf.last = Math.round(dt * 100) / 100;
   }
 
   /* 3) 分发入口隔离 */
