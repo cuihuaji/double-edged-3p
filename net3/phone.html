@@ -748,100 +748,166 @@
 </script>
 <script>
 /* ------------------------------------------------------------------
- * 双指同按（攻 + 跳 = 必杀）
- * 库的按钮各挂 pointerdown/up，真机上第二根手指常把第一根的 pointer 取消掉，
- * 于是攻刚按下就被松掉，必杀按不出来。这里把两个动作键换成「按落点统一判定」：
- * 每次 touch 事件算出当前所有手指压在哪几个键上，只补发差量，任意多指都成立。
- * 顺带克隆掉库原来的监听器，避免一次按压发两次键。
+ * 攻 / 跳（双指同按 = 必杀）
+ *
+ * 库的两个动作键各自挂 pointerdown/up，真机上第二根手指会把第一根的 pointer 取消掉，
+ * 于是攻刚按下就被松掉，必杀按不出来。这里改成「按持有者计数」的状态机：
+ *   holders[键] = { 持有者 id: 1 }
+ * 手指（touch）和指针（pointer）各算一个持有者，谁在都不松键；全部走了才松。
+ * 这样无论设备只派发 touch、只派发 pointer、还是两者都派发，结果都一样，也不会重发。
+ * 轻点也保底按满 MIN_HOLD 毫秒，免得主控端 30fps 采样没轮到就松了。
  * ------------------------------------------------------------------ */
 (function () {
-  var CODES = { 'action-z': 'KeyG', 'action-x': 'KeyH' };
-  var bindCode = { 'KeyG': 71, 'KeyH': 72 };
-  var down = {};
+  var CODE_OF = { "action-z": "KeyG", "action-x": "KeyH" };
+  var BTN_OF  = { "KeyG": ".action-z", "KeyH": ".action-x" };
+  var KEYCODE = { "KeyG": 71, "KeyH": 72 };
+  var KEYCHR  = { "KeyG": "g", "KeyH": "h" };
+  var MIN_HOLD = 90;               /* ms：轻点也至少按住这么久，保证主控端采得到 */
+
+  var holders = { KeyG: {}, KeyH: {} };
+  var down = { KeyG: false, KeyH: false };
+  var pressAt = { KeyG: 0, KeyH: 0 };
+  var touchCode = {};              /* touchId -> code */
+  var ptrCode = {};                /* pointerId -> code */
   var pad = null;
+  window.__mt = { holders: holders, down: down, touchCode: touchCode, ptrCode: ptrCode, log: [], codeAt: codeAt };
 
   function codeAt(x, y) {
     var el = document.elementFromPoint(x, y);
     while (el) {
-      if (el.classList && (el.classList.contains('action-z') || el.classList.contains('action-x'))) {
-        return { code: CODES[el.classList.contains('action-z') ? 'action-z' : 'action-x'], el: el };
-      }
+      if (el.classList && el.classList.contains("action-z")) return "KeyG";
+      if (el.classList && el.classList.contains("action-x")) return "KeyH";
       el = el.parentElement;
     }
     return null;
   }
 
-  function setDown(code, el, on) {
-    if (!!down[code] === on) return;
-    down[code] = on;
-    if (el) el.classList.toggle('active', on);
-    var ev = new KeyboardEvent(on ? 'keydown' : 'keyup', {
-      key: code === 'KeyG' ? 'g' : 'h', code: code, keyCode: bindCode[code],
-      which: bindCode[code], bubbles: true, cancelable: true
-    });
-    window.dispatchEvent(ev);
-    if (on && pad && pad.triggerHaptic) { try { pad.triggerHaptic(); } catch (e) {} }
-  }
-
-  function sync(touches) {
-    var want = {};
-    for (var i = 0; i < touches.length; i++) {
-      var hit = codeAt(touches[i].clientX, touches[i].clientY);
-      if (hit) want[hit.code] = hit;
+  function emit(code, on) {
+    var ev;
+    try {
+      ev = new KeyboardEvent(on ? "keydown" : "keyup", {
+        key: KEYCHR[code], code: code, keyCode: KEYCODE[code], which: KEYCODE[code],
+        bubbles: true, cancelable: true
+      });
+    } catch (e) {
+      ev = document.createEvent("Event");
+      ev.initEvent(on ? "keydown" : "keyup", true, true);
+      ev.code = code; ev.keyCode = KEYCODE[code]; ev.which = KEYCODE[code]; ev.key = KEYCHR[code];
     }
-    for (var c in CODES) { /* noop: 保持结构清晰 */ }
-    ['KeyG', 'KeyH'].forEach(function (code) {
-      if (want[code]) setDown(code, want[code].el, true);
-      else setDown(code, document.querySelector('.action-' + (code === 'KeyG' ? 'z' : 'x')), false);
-    });
+    window.dispatchEvent(ev);
+    var el = document.querySelector(BTN_OF[code]);
+    if (el) el.classList.toggle("active", on);
   }
 
-  var sawTouch = false;
+  var pendingUp = { KeyG: null, KeyH: null };
 
+  function applyCode(code) {
+    var want = false;
+    for (var k in holders[code]) { want = true; break; }
+
+    if (want) {
+      /* 又按住了：撤销还没落地的保底松手 */
+      if (pendingUp[code]) { clearTimeout(pendingUp[code]); pendingUp[code] = null; }
+      if (down[code]) return;
+      down[code] = true;
+      pressAt[code] = (window.performance || Date).now();
+      emit(code, true);
+      if (pad && pad.triggerHaptic) { try { pad.triggerHaptic(); } catch (e) {} }
+      return;
+    }
+
+    if (!down[code]) return;
+    down[code] = false;
+    var held = (window.performance || Date).now() - pressAt[code];
+    var wait = MIN_HOLD - held;
+    if (wait > 0) {
+      /* 轻点保底：至少按住 MIN_HOLD 毫秒，主控端 30fps 才采得到；
+         到点时若已经没有手指，才真的松键（不能在这里看 down，它已经置 false 了）。 */
+      pendingUp[code] = setTimeout(function () {
+        pendingUp[code] = null;
+        for (var k2 in holders[code]) { return; }
+        emit(code, false);
+      }, wait);
+    } else {
+      emit(code, false);
+    }
+  }
+  function hold(id, code) { holders[code][id] = 1; applyCode(code); }
+  function drop(id, code) { if (holders[code][id]) { delete holders[code][id]; applyCode(code); } }
+
+  /* ---- touch ---- */
   function onTouch(e) {
-    sawTouch = true;
-    if (e.touches && e.touches.length) {
-      for (var i = 0; i < e.touches.length; i++) {
-        var hit = codeAt(e.touches[i].clientX, e.touches[i].clientY);
-        if (hit) { if (e.cancelable) e.preventDefault(); break; }
+    var i, t, code, id, all, ch;
+    if (e.type === "touchstart" || e.type === "touchmove") {
+      all = e.touches || [];
+      var hit = false;
+      for (i = 0; i < all.length; i++) {
+        t = all[i];
+        id = "t" + t.identifier;
+        code = codeAt(t.clientX, t.clientY);
+        if (hit === false && code) hit = true;
+        if ((touchCode[id] || null) !== code) {
+          if (touchCode[id]) drop(id, touchCode[id]);
+          if (code) { touchCode[id] = code; hold(id, code); }
+          else delete touchCode[id];
+        }
+      }
+      if (hit && e.cancelable) e.preventDefault();
+    } else {                                   /* touchend / touchcancel */
+      ch = e.changedTouches || [];
+      for (i = 0; i < ch.length; i++) {
+        id = "t" + ch[i].identifier;
+        if (touchCode[id]) { drop(id, touchCode[id]); delete touchCode[id]; }
       }
     }
-    sync(e.touches || []);
   }
+  var TOPTS = { passive: false, capture: true };
+  document.addEventListener("touchstart", onTouch, TOPTS);
+  document.addEventListener("touchmove", onTouch, TOPTS);
+  document.addEventListener("touchend", onTouch, TOPTS);
+  document.addEventListener("touchcancel", onTouch, TOPTS);
 
+  /* ---- pointer（含鼠标；与 touch 互为备份，不会重复发键）---- */
+  document.addEventListener("pointerdown", function (e) {
+    var code = codeAt(e.clientX, e.clientY);
+    if (!code) return;
+    if (e.cancelable) e.preventDefault();
+    var id = "p" + e.pointerId;
+    if (ptrCode[id] !== code) {
+      if (ptrCode[id]) drop(id, ptrCode[id]);
+      ptrCode[id] = code;
+      hold(id, code);
+    }
+  }, true);
+  document.addEventListener("pointermove", function (e) {
+    var id = "p" + e.pointerId;
+    if (!ptrCode[id]) return;
+    var code = codeAt(e.clientX, e.clientY);
+    if (code !== ptrCode[id]) {
+      drop(id, ptrCode[id]);
+      if (code) { ptrCode[id] = code; hold(id, code); } else delete ptrCode[id];
+    }
+  }, true);
+  function onPointerEnd(e) {
+    var id = "p" + e.pointerId;
+    if (ptrCode[id]) { drop(id, ptrCode[id]); delete ptrCode[id]; }
+  }
+  document.addEventListener("pointerup", onPointerEnd, true);
+  document.addEventListener("pointercancel", onPointerEnd, true);
+
+  /* ---- 装上：克隆掉库原来的监听器，只留上面这套 ---- */
   function boot() {
     pad = window.__dePad;
     if (!pad) return false;
-    /* 克隆两个动作键：库的 pointer 监听器随之丢掉，只留我们这套 */
-    ['.action-z', '.action-x'].forEach(function (sel) {
+    [".action-z", ".action-x"].forEach(function (sel) {
       var el = document.querySelector(sel);
       if (el && el.parentNode) el.parentNode.replaceChild(el.cloneNode(true), el);
     });
-    var opts = { passive: false, capture: true };
-    document.addEventListener('touchstart', onTouch, opts);
-    document.addEventListener('touchmove', onTouch, opts);
-    document.addEventListener('touchend', onTouch, opts);
-    document.addEventListener('touchcancel', onTouch, opts);
-    /* 兜底通道：有的环境只派发 pointer 不派发 touch。
-       一旦见到过真 touch 就整体让位，避免同一次按压发两遍键。 */
-    function releaseAll() {
-      ['KeyG', 'KeyH'].forEach(function (code) {
-        setDown(code, document.querySelector('.action-' + (code === 'KeyG' ? 'z' : 'x')), false);
-      });
-    }
-    document.addEventListener('pointerdown', function (e) {
-      if (sawTouch) return;
-      var hit = codeAt(e.clientX, e.clientY);
-      if (hit) { if (e.cancelable) e.preventDefault(); setDown(hit.code, hit.el, true); }
-    }, true);
-    document.addEventListener('pointerup', function () { if (!sawTouch) releaseAll(); }, true);
-    document.addEventListener('pointercancel', function () { if (!sawTouch) releaseAll(); }, true);
     return true;
   }
-
   var tries = 0;
   (function waitPad() {
-    if (boot() || ++tries > 100) return;
+    if (boot() || ++tries > 120) return;
     setTimeout(waitPad, 100);
   })();
 })();
