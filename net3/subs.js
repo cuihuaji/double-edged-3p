@@ -81,27 +81,76 @@ window.DE_SUBS = [
 /* ---- 运行时采集：把 AVM 里所有可见文本框的内容读出来 ----
  * 实测：游戏里能读到的文字都在 TextField 的 $Bg_text 上（舞台树 → 属性）。
  * 遍历深度 9 足够覆盖 441 个节点，每 300ms 跑一次开销可忽略。 */
+/* 从一个 TextField 包装对象里取字符串。
+ * 实测两种存法：
+ *   1) 代码创建的文本框 → 包装对象上的 $Bg_text
+ *   2) 元件里嵌的文本框（对话气泡就是这种）→ 包装对象._adaptee._text
+ * 只读 _text 不够，_iText 在部分状态下才是最新的。 */
+function deFieldText(o) {
+  try {
+    var a = o._adaptee || o;
+    if (typeof a._text === "string" && a._text) return a._text;
+    if (typeof a._iText === "string" && a._iText) return a._iText;
+    if (typeof a.text === "string" && a.text) return a.text;
+  } catch (e) {}
+  return "";
+}
+
+/* 设计期占位文字，气泡没说话时留着它，不能当字幕 */
+function dePlaceholder(s) {
+  return /^(\s*speech text\s*)+$/i.test(s);
+}
+
+/* ---- 运行时采集 ----
+ * 沿舞台树下降时累计「有效透明度」和可见性：气泡隐藏时 alpha 归零，
+ * 文本却还留着上一句，只看文本会一直显示过期字幕。
+ * 实测 441 个节点，一次遍历约 0.3ms，300ms 轮询没有压力。 */
 window.DE_collect = function (w) {
   try {
-    const pg = w.AVMPlayerPoki && w.AVMPlayerPoki._avmHandler && w.AVMPlayerPoki._avmHandler._playerglobal;
-    const root = pg && pg._stage && pg._stage._stage && pg._stage._stage.getChildAt(0);
+    var pg = w.AVMPlayerPoki && w.AVMPlayerPoki._avmHandler && w.AVMPlayerPoki._avmHandler._playerglobal;
+    var root = pg && pg._stage && pg._stage._stage && pg._stage._stage.getChildAt(0);
     if (!root) return [];
-    const out = [], seen = new Set();
-    (function walk(o, d) {
-      if (!o || d > 9 || seen.has(o)) return;
+    var out = [], seen = new Set();
+    (function walk(o, d, effAlpha, vis) {
+      if (!o || d > 10 || seen.has(o)) return;
       seen.add(o);
-      let ns; try { ns = Object.getOwnPropertyNames(o); } catch (e) { return; }
+      var al = 1; try { if (typeof o.alpha === "number") al = o.alpha; } catch (e) {}
+      var v = vis; try { if (o.visible === false) v = false; } catch (e) {}
+      var ea = effAlpha * (al >= 0 && al <= 1 ? al : 1);
+      var shown = v && ea > 0.05;
+
+      var pushed = false;
+      var ns; try { ns = Object.getOwnPropertyNames(o); } catch (e) { ns = []; }
+      // 1) 代码创建的文本框
       if (ns.indexOf("$Bg_text") >= 0) {
-        let v = ""; try { v = o.$Bg_text; } catch (e) {}
-        if (typeof v === "string" && v.trim() && v !== "undefined") out.push(v.trim());
+        var t1 = ""; try { t1 = o.$Bg_text; } catch (e) {}
+        if (typeof t1 === "string" && t1.trim() && shown) { out.push(t1.trim()); pushed = true; }
       }
-      let n = 0; try { n = o.numChildren || 0; } catch (e) {}
-      for (let i = 0; i < n; i++) { let c = null; try { c = o.getChildAt(i); } catch (e) {} if (c) walk(c, d + 1); }
-    })(root, 0);
-    return out;
+      // 2) 元件里的文本框 / 气泡（直接扫 _adaptee._text，不依赖包装对象叫什么）
+      if (!pushed && ns.indexOf("_adaptee") >= 0) {
+        var t2 = deFieldText(o);
+        if (t2 && t2.trim() && shown && !dePlaceholder(t2)) out.push(t2.trim());
+      }
+      // 3) 气泡外壳上的 speechText 字段（外壳自身可能没有 _adaptee）
+      if (ns.indexOf("$BgspeechText") >= 0) {
+        var f = null; try { f = o.$BgspeechText; } catch (e) {}
+        var t3 = f ? deFieldText(f) : "";
+        if (t3 && t3.trim() && shown && !dePlaceholder(t3)) out.push(t3.trim());
+      }
+
+      var n = 0; try { n = o.numChildren || 0; } catch (e) {}
+      for (var i = 0; i < n; i++) {
+        var c = null; try { c = o.getChildAt(i); } catch (e) {}
+        if (c) walk(c, d + 1, ea, v);
+      }
+    })(root, 0, 1, true);
+    // 去重并按长度排序，长的（台词）优先
+    var uniq = [];
+    for (var i = 0; i < out.length; i++) if (uniq.indexOf(out[i]) < 0) uniq.push(out[i]);
+    uniq.sort(function (x, y) { return y.length - x.length; });
+    return uniq;
   } catch (e) { return []; }
 };
-
 /* ---- 匹配：支持打字机（气泡逐字出现）----
  * 屏幕上只有半句时，用「屏幕文本是词条前缀」来认定是同一条台词。 */
 window.DE_MATCH = function (raw) {
@@ -129,10 +178,10 @@ window.DE_bar = (function () {
     el.id = "de-sub";
     el.style.cssText = "position:fixed;left:0;right:0;bottom:16px;z-index:9999;display:none;" +
       "pointer-events:none;text-align:center;" +
-      "font:600 20px/1.5 -apple-system,'Segoe UI','Microsoft YaHei',sans-serif;" +
+      "font:600 16px/1.45 -apple-system,'Segoe UI','Microsoft YaHei',sans-serif;" +
       "color:#fff;text-shadow:0 2px 10px rgba(0,0,0,.95),0 0 3px rgba(0,0,0,.85)";
     inner = document.createElement("span");
-    inner.style.cssText = "display:inline-block;max-width:min(92vw,860px);padding:7px 18px;" +
+    inner.style.cssText = "display:inline-block;max-width:min(92vw,860px);padding:5px 14px;" +
       "border-radius:10px;background:rgba(0,0,0,.62)";
     el.appendChild(inner);
     document.body.appendChild(el);
