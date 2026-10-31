@@ -121,7 +121,7 @@
 <div id="clicklayer"></div>
 
 <div id="panel">
-  <h1>双人/三人联机 · 房主（P1）</h1>
+  <h1>双人联机 · 房主（P1）</h1>
   <div class="row"><span class="k">游戏</span><span class="v" id="v-game">载入中…</span></div>
   <div class="row"><span class="k">对端</span><span class="v" id="v-peer">未连接</span></div>
   <div class="row"><span class="k">帧号</span><span class="v" id="v-frame">0</span></div>
@@ -206,7 +206,7 @@
   /* ===== 房主本地输入：直接打 iframe.contentWindow.__lock（与好友转发同一条已验证通道） =====
    * 不再依赖 lock.js 的 self.L（NOLOCK 模式下不稳）。__lock 是 play3p 顶层暴露的 L 对象。
    * play3p.applyEvents 接受: ["md"/"mu", fx, fy] 鼠标；["d"/"u", code] 键盘。 */
-  const P1KEYS = ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","KeyN","KeyM"];
+  const P1KEYS = ["KeyW","KeyA","KeyS","KeyD","KeyJ","KeyK"];
   const P2KEYS = ["KeyW","KeyA","KeyS","KeyD","KeyG","KeyH"];
 
   function hostL() { return iframe.contentWindow && iframe.contentWindow.__lock; }
@@ -931,7 +931,7 @@
  * 手机开房页：房主自己就是 P1，用触屏手柄玩，画面通过 WebRTC 推给好友。
  *
  * 手柄沿用手机端已经在用的 vendor/ruffle-touch（不自己造轮子），键位按 P1：
- *   方向 = Arrow 键；攻 = KeyN(78)；跳 = KeyM(77)   （与 AS3 存档 custom_keys 一致）
+ *   方向 = WASD；攻 = KeyJ(74)；跳 = KeyK(75)   （与 AS3 存档 custom_keys 一致）
  * 空白处轻点 = 菜单点击，交给宿主页原有的 #clicklayer（它已经在整页接管 pointerdown）。
  * 房号条：进页面自动开房，显示房号，点一下复制。
  * ------------------------------------------------------------------ */
@@ -991,8 +991,13 @@
       paintQ();
     });
     window.addEventListener("de-qchange", paintQ);
-    /* 虚拟摇杆：方向键走 ArrowXxx（P1），和十字键同一条 KeyboardEvent 通道 */
-  if (window.DEStick) window.DEStick.mount({ deadzone: 0.22 });
+    /* 虚拟摇杆：方向键走 WASD（P1），和十字键同一条 KeyboardEvent 通道 */
+  if (window.DEStick) window.DEStick.mount({ deadzone: 0.22, keys: {
+    up:    { key: "w", code: "KeyW", keyCode: 87 },
+    down:  { key: "s", code: "KeyS", keyCode: 83 },
+    left:  { key: "a", code: "KeyA", keyCode: 65 },
+    right: { key: "d", code: "KeyD", keyCode: 68 }
+  } });
     var stickBtn = document.getElementById("de-stick-btn");
     function paintStick() {
       if (!stickBtn || !window.DEStick) return;
@@ -1031,14 +1036,14 @@
     var pad = new window.RuffleTouch({ container: document.body });
     pad.settings.mappingPreset = "custom";
     pad.settings.customMappings = {
-      up:    { key: "ArrowUp",    code: "ArrowUp",    keyCode: 38, label: "▲" },
-      down:  { key: "ArrowDown",  code: "ArrowDown",  keyCode: 40, label: "▼" },
-      left:  { key: "ArrowLeft",  code: "ArrowLeft",  keyCode: 37, label: "◀" },
-      right: { key: "ArrowRight", code: "ArrowRight", keyCode: 39, label: "▶" },
-      z:     { key: "n", code: "KeyN", keyCode: 78, label: "攻" },
-      x:     { key: "m", code: "KeyM", keyCode: 77, label: "跳" },
-      space: { key: "n", code: "KeyN", keyCode: 78, label: "攻" },
-      enter: { key: "m", code: "KeyM", keyCode: 77, label: "跳" }
+      up:    { key: "w", code: "KeyW", keyCode: 87, label: "W" },
+      down:  { key: "s", code: "KeyS", keyCode: 83, label: "S" },
+      left:  { key: "a", code: "KeyA", keyCode: 65, label: "A" },
+      right: { key: "d", code: "KeyD", keyCode: 68, label: "D" },
+      z:     { key: "j", code: "KeyJ", keyCode: 74, label: "攻" },
+      x:     { key: "k", code: "KeyK", keyCode: 75, label: "跳" },
+      space: { key: "j", code: "KeyJ", keyCode: 74, label: "攻" },
+      enter: { key: "k", code: "KeyK", keyCode: 75, label: "跳" }
     };
     pad.keyDefinitions = pad.getEffectiveMappings();
     pad.saveSettings();
@@ -1088,20 +1093,20 @@
 })();
 
 /* ------------------------------------------------------------------
- * 攻 / 跳（双指同按 = P1 必杀 N+M）
+ * 攻 / 跳（双指同按 = P1 必杀 J+K）
  * 与手机好友页同一套实现：命中用事件自带 target，监听全 passive，
  * 每个键维护「持有者集合」（每根手指/每个指针算一个），轻点保底 90ms。
  * ------------------------------------------------------------------ */
 (function () {
-  var BTN_OF  = { "KeyN": ".action-z", "KeyM": ".action-x" };
-  var KEYCODE = { "KeyN": 78, "KeyM": 77 };
-  var KEYCHR  = { "KeyN": "n", "KeyM": "m" };
+  var BTN_OF  = { "KeyJ": ".action-z", "KeyK": ".action-x" };
+  var KEYCODE = { "KeyJ": 74, "KeyK": 75 };
+  var KEYCHR  = { "KeyJ": "j", "KeyK": "k" };
   var MIN_HOLD = 90;
 
-  var holders = { KeyN: {}, KeyM: {} };
-  var down = { KeyN: false, KeyM: false };
-  var pressAt = { KeyN: 0, KeyM: 0 };
-  var pendingUp = { KeyN: null, KeyM: null };
+  var holders = { KeyJ: {}, KeyK: {} };
+  var down = { KeyJ: false, KeyK: false };
+  var pressAt = { KeyJ: 0, KeyK: 0 };
+  var pendingUp = { KeyJ: null, KeyK: null };
   var touchCode = {}, ptrCode = {};
   var pad = null;
 
@@ -1122,8 +1127,8 @@
 
   function codeOfEl(el) {
     while (el && el.classList) {
-      if (el.classList.contains("action-z")) return "KeyN";
-      if (el.classList.contains("action-x")) return "KeyM";
+      if (el.classList.contains("action-z")) return "KeyJ";
+      if (el.classList.contains("action-x")) return "KeyK";
       el = el.parentElement;
     }
     return null;

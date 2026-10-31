@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <link rel="icon" href="data:," />
-<title>Double Edged · 三人锁步</title>
+<title>Double Edged · 双人联机</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   /* 页面本身固定成 550x400 的 1.6 倍：AVM 按容器尺寸决定画布像素和舞台比例，
@@ -436,10 +436,10 @@
     }
   };
   window.addEventListener("resize", function () { setTimeout(fitCanvas, 80); });
-  /* P2 的按键（菜单上写的是 G 攻击 / H 跳 / WASD 移动）。
+  /* P2 的按键（P2 = 方向键移动 + N 攻击 / M 跳）。
    * 单人模式下必须屏蔽：FightingGameMain.as:546 是 `else if(Key.customDown(10)) p2Join();`，
    * 按到 P2 的键就会把青色斯巴达拉进来，并把 numPlayers 改成 2。 */
-  var P2KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, KeyG: 1, KeyH: 1 };
+  var P2KEYS = { ArrowLeft: 1, ArrowRight: 1, ArrowUp: 1, ArrowDown: 1, KeyN: 1, KeyM: 1 };
 
   /* 一次事件批量应用（同一帧内） */
   L.applyEvents = function (list) {
@@ -597,7 +597,7 @@
     filenameNoSdk: "double-edged",
     binary: [
       { name: "fonts.swf", path: "assets/fonts.swf", size: 30506 },
-      { name: "game_3p", path: "assets/game_3p.swf?v=stats1", size: 2074919, resourceType: "GAME" }
+      { name: "game_3p", path: "assets/game_3p.swf?v=keys1", size: 2074942, resourceType: "GAME" }
     ],
     runtime: "js/Nitrome.js"
   };

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>绝地双刃 · 三人联机</title>
+<title>绝地双刃 · 双人联机</title>
 <style>
   * { box-sizing: border-box; }
   body {
@@ -67,7 +67,7 @@
     <div class="sub">手机也能当房主：这台手机跑游戏，好友看你的画面一起打。或者填房号加入别人的房间。</div>
     <button class="go host" id="m-host">我来开房（这台手机当 P1）</button>
     <div class="sub2">开好房把房号发给好友，对方在电脑或手机上打开本页面填房号就能进。<br>手机开房 = 你玩 P1（←↑↓→ 移动，攻 / 跳，两个同按 = 必杀），菜单也由你点。</div>
-    <a class="alt3" href="net3/host-phone.html?p=2" id="m-host3">要三个人？开三人房（等 2 位好友）→</a>
+    <a class="alt3" href="net3/host-phone.html?p=2" id="m-host3">用手机当房主手柄？开手机房 →</a>
     <div class="or">— 或者加入别人的房间 —</div>
     <input class="big" id="m-room" placeholder="房间号（de 开头）" autocomplete="off" autocapitalize="off" spellcheck="false" />
     <button class="go" id="m-go">加入房间</button>
@@ -78,7 +78,7 @@
     <a class="desk-link" href="index.html?web=1">用电脑打开 → 房主 / 好友入口</a>
   </div>
   <div id="desk-lobby">  <h1>绝地双刃 · 联机大厅</h1>
-  <div class="sub">每个人都在自己的电脑上跑游戏，网络上只传按键。三个人都先双击 <b>启动.bat</b>，再打开这个页面。</div>
+  <div class="sub">两个人各自跑一份游戏，网络上只传按键。双方都先双击 <b>启动.bat</b>，再打开这个页面。</div>
 
   <div class="cards">
     <a class="card host" href="net3/host3.html?p=1">
@@ -90,16 +90,15 @@
       <span>点进来后<br>输入房主给你的房号</span>
     </a>
     <a class="card host" href="net3/host3.html" style="background:rgba(60,80,110,.25)">
-      <b>我是房主（三人）</b>
-      <span>点进来后开房<br>等 2 位好友到齐开局</span>
+      <b>我是房主</b>
+      <span>点进来后开房<br>等好友连上即可开局</span>
     </a>
   </div>
 
   <table>
     <tr><th>角色</th><th>移动</th><th>攻击</th><th>跳跃</th></tr>
-    <tr><td>P1 房主</td><td><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></td><td><kbd>N</kbd></td><td><kbd>M</kbd></td></tr>
-    <tr><td>P2 好友一</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td><kbd>G</kbd></td><td><kbd>H</kbd></td></tr>
-    <tr><td>P3 好友二</td><td><kbd>I</kbd><kbd>J</kbd><kbd>K</kbd><kbd>L</kbd></td><td><kbd>O</kbd></td><td><kbd>P</kbd></td></tr>
+    <tr><td>P1 房主</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td><kbd>J</kbd></td><td><kbd>K</kbd></td></tr>
+    <tr><td>P2 好友</td><td><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></td><td><kbd>N</kbd></td><td><kbd>M</kbd></td></tr>
   </table>
 
   <div class="note">

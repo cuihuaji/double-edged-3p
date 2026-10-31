@@ -78,7 +78,7 @@
 <div id="wrap"><iframe id="game" allow="autoplay; fullscreen"></iframe><video id="rv" autoplay playsinline style="display:none;position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:5;image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges"></video></div>
 
 <div id="panel">
-  <h1>三人联机 · 好友</h1>
+  <h1>双人联机 · 好友（P2）</h1>
   <div class="row"><span class="k">游戏</span><span class="v" id="v-game">载入中…</span></div>
   <div class="row"><span class="k">对端</span><span class="v" id="v-peer">未连接</span></div>
   <div class="row"><span class="k">帧号</span><span class="v" id="v-frame">0</span></div>
@@ -90,7 +90,7 @@
 
   <input class="room" id="room" placeholder="输入房间号" autocomplete="off" spellcheck="false" />
   <button id="btn-room">加入</button>
-  <div class="hint" id="room-hint">向房主要房间号（双人房 1 人加入即开局；三人房要等 2 人）。</div>
+  <div class="hint" id="room-hint">向房主要房间号，1 人加入即可开局。</div>
 
   <details class="alt">
     <summary>备用：手动连接码（信令连不上时用）</summary>
@@ -100,7 +100,7 @@
   </details>
 
   <div class="hint">
-    第二人：<code>WASD</code> 移动 · <code>G</code> 攻击 · <code>H</code> 跳<br>第三人：<code>IJKL</code> 移动 · <code>O</code> 攻击 · <code>P</code> 跳
+    第二人：<code>←↑↓→</code> 移动 · <code>N</code> 攻击 · <code>M</code> 跳
   </div>
 </div>
 
@@ -483,11 +483,11 @@
 <script>
 /* ===== 手机手柄：ruffle-touch（M5Devs）现成的虚拟手柄 =====
  * 8 向 D-pad：手指在十字区里按角度同时给两个方向，能斜跳斜砍；
- * 动作键映射到本作 P2 的真实键位 G(攻击)/H(跳)。库把按键派发成真实
+ * 动作键映射到本作 P2 的真实键位 N(攻击)/M(跳)。库把按键派发成真实
  * KeyboardEvent 到 window，这里接住转成报文发给房主。
  * 页面一打开就挂上，连上房主之前按键直接丢弃，不会报错。 */
 (function () {
-  var P2 = { KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68, KeyG: 71, KeyH: 72 };
+  var P2 = { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, KeyN: 78, KeyM: 77 };
   function send(o) { return window.__deSend ? window.__deSend(o) : false; }
   window.addEventListener("keydown", function (e) {
     if (P2[e.code]) send({ evt: "keydown", code: e.code, keyCode: P2[e.code], key: "" });
@@ -501,14 +501,14 @@
     var pad = new window.RuffleTouch({ container: document.body });
     pad.settings.mappingPreset = "custom";
     pad.settings.customMappings = {
-      up:    { key: "w", code: "KeyW", keyCode: 87, label: "W" },
-      down:  { key: "s", code: "KeyS", keyCode: 83, label: "S" },
-      left:  { key: "a", code: "KeyA", keyCode: 65, label: "A" },
-      right: { key: "d", code: "KeyD", keyCode: 68, label: "D" },
-      z:     { key: "g", code: "KeyG", keyCode: 71, label: "攻" },
-      x:     { key: "h", code: "KeyH", keyCode: 72, label: "跳" },
-      space: { key: "g", code: "KeyG", keyCode: 71, label: "攻" },
-      enter: { key: "h", code: "KeyH", keyCode: 72, label: "跳" }
+      up:    { key: "ArrowUp",    code: "ArrowUp",    keyCode: 38, label: "▲" },
+      down:  { key: "ArrowDown",  code: "ArrowDown",  keyCode: 40, label: "▼" },
+      left:  { key: "ArrowLeft",  code: "ArrowLeft",  keyCode: 37, label: "◀" },
+      right: { key: "ArrowRight", code: "ArrowRight", keyCode: 39, label: "▶" },
+      z:     { key: "n", code: "KeyN", keyCode: 78, label: "攻" },
+      x:     { key: "m", code: "KeyM", keyCode: 77, label: "跳" },
+      space: { key: "n", code: "KeyN", keyCode: 78, label: "攻" },
+      enter: { key: "m", code: "KeyM", keyCode: 77, label: "跳" }
     };
     pad.keyDefinitions = pad.getEffectiveMappings();
     pad.saveSettings();
@@ -573,14 +573,14 @@
     fsBtn.type = "button";
     fsBtn.textContent = "⛶";
     fsBtn.title = "全屏并锁定横屏";
-    /* 虚拟摇杆：好友端方向键是 P2 的 WASD，走同一条转发通道 */
+    /* 虚拟摇杆：好友端方向键是 P2 的方向键，走同一条转发通道 */
     if (window.DEStick) window.DEStick.mount({
       deadzone: 0.22,
       keys: {
-        up:    { key: "w", code: "KeyW", keyCode: 87 },
-        down:  { key: "s", code: "KeyS", keyCode: 83 },
-        left:  { key: "a", code: "KeyA", keyCode: 65 },
-        right: { key: "d", code: "KeyD", keyCode: 68 }
+        up:    { key: "ArrowUp",    code: "ArrowUp",    keyCode: 38 },
+        down:  { key: "ArrowDown",  code: "ArrowDown",  keyCode: 40 },
+        left:  { key: "ArrowLeft",  code: "ArrowLeft",  keyCode: 37 },
+        right: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 }
       }
     });
     if (window.DEFs) window.DEFs.attach(fsBtn);
@@ -766,15 +766,15 @@
  * 4) 轻点保底 MIN_HOLD 毫秒，保证主控端 30fps 采样能轮到。
  * ------------------------------------------------------------------ */
 (function () {
-  var BTN_OF  = { "KeyG": ".action-z", "KeyH": ".action-x" };
-  var KEYCODE = { "KeyG": 71, "KeyH": 72 };
-  var KEYCHR  = { "KeyG": "g", "KeyH": "h" };
+  var BTN_OF  = { "KeyN": ".action-z", "KeyM": ".action-x" };
+  var KEYCODE = { "KeyN": 78, "KeyM": 77 };
+  var KEYCHR  = { "KeyN": "n", "KeyM": "m" };
   var MIN_HOLD = 90;
 
-  var holders = { KeyG: {}, KeyH: {} };
-  var down = { KeyG: false, KeyH: false };
-  var pressAt = { KeyG: 0, KeyH: 0 };
-  var pendingUp = { KeyG: null, KeyH: null };
+  var holders = { KeyN: {}, KeyM: {} };
+  var down = { KeyN: false, KeyM: false };
+  var pressAt = { KeyN: 0, KeyM: 0 };
+  var pendingUp = { KeyN: null, KeyM: null };
   var touchCode = {}, ptrCode = {};
   var pad = null;
 
@@ -796,8 +796,8 @@
 
   function codeOfEl(el) {
     while (el && el.classList) {
-      if (el.classList.contains("action-z")) return "KeyG";
-      if (el.classList.contains("action-x")) return "KeyH";
+      if (el.classList.contains("action-z")) return "KeyN";
+      if (el.classList.contains("action-x")) return "KeyM";
       el = el.parentElement;
     }
     return null;

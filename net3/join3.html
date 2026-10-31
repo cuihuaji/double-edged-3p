@@ -71,7 +71,7 @@
 <div id="wrap"><iframe id="game" allow="autoplay; fullscreen"></iframe><video id="rv" autoplay playsinline style="display:none;position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:5;image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges"></video></div>
 
 <div id="panel">
-  <h1>三人联机 · 好友</h1>
+  <h1>双人联机 · 好友（P2）</h1>
   <div class="row"><span class="k">游戏</span><span class="v" id="v-game">载入中…</span></div>
   <div class="row"><span class="k">对端</span><span class="v" id="v-peer">未连接</span></div>
   <div class="row"><span class="k">帧号</span><span class="v" id="v-frame">0</span></div>
@@ -83,7 +83,7 @@
 
   <input class="room" id="room" placeholder="输入房间号" autocomplete="off" spellcheck="false" />
   <button id="btn-room">加入</button>
-  <div class="hint" id="room-hint">向房主要房间号（双人房 1 人加入即开局；三人房要等 2 人）。</div>
+  <div class="hint" id="room-hint">向房主要房间号，1 人加入即可开局。</div>
 
   <details class="alt">
     <summary>备用：手动连接码（信令连不上时用）</summary>
@@ -93,7 +93,7 @@
   </details>
 
   <div class="hint">
-    第二人：<code>WASD</code> 移动 · <code>G</code> 攻击 · <code>H</code> 跳<br>第三人：<code>IJKL</code> 移动 · <code>O</code> 攻击 · <code>P</code> 跳
+    第二人：<code>←↑↓→</code> 移动 · <code>N</code> 攻击 · <code>M</code> 跳
   </div>
 </div>
 
@@ -313,7 +313,7 @@
       }
     }
     /* 手机好友：触屏手柄 → 走和键盘完全相同的 keydown/keyup 报文，
-     * 键位用 P2 的 W/A/S/D + G(攻) + H(跳)（房主端对这几个码有专门白名单通道）。 */
+     * 键位用 P2 的方向键 + N(攻) + M(跳)（房主端对这几个码有专门白名单通道）。 */
     function sendRaw(o) {
       const all = (peer && peer.connections) || {};
       for (const k in all) {
@@ -323,7 +323,7 @@
       return false;
     }
     if (window.DE_PAD) {
-      const KC = { KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68, KeyG: 71, KeyH: 72 };
+      const KC = { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, KeyN: 78, KeyM: 77 };
       /* 手机上没鼠标：视频铺满整屏，手柄浮在上面 */
       try {
         const s2 = document.createElement("style");
@@ -333,8 +333,8 @@
         document.body.classList.add("de-touch");
       } catch (e) {}
       window.__deJoinPad = window.DE_PAD({
-        up: "KeyW", down: "KeyS", left: "KeyA", right: "KeyD",
-        attack: "KeyG", jump: "KeyH",
+        up: "ArrowUp", down: "ArrowDown", left: "ArrowLeft", right: "ArrowRight",
+        attack: "KeyN", jump: "KeyM",
         hint: "左手方向 · 右手攻/跳 · 同按＝必杀",
         area: function () { return document.getElementById("rv"); },
         aspect: 880 / 640,
@@ -437,8 +437,8 @@
       + '<tr><td class="e">MAP（地图上闪光的 PLAY）</td><td>关卡选择，点它进关</td></tr>'
       + '<tr><td class="e">HELP / CREDITS</td><td>操作说明 / 制作名单</td></tr>'
       + '<tr><td class="e">REDEFINE KEYS</td><td>自定义按键</td></tr>'
-      + '<tr><td class="e">P1：←↑↓→ · N · M</td><td>移动 · 攻击/对话 · 跳跃</td></tr>'
-      + '<tr><td class="e">P2：WASD · G · H</td><td>移动 · 攻击/对话 · 跳跃</td></tr>'
+      + '<tr><td class="e">P1：WASD · J · K</td><td>移动 · 攻击/对话 · 跳跃</td></tr>'
+      + '<tr><td class="e">P2：←↑↓→ · N · M</td><td>移动 · 攻击/对话 · 跳跃</td></tr>'
       + '</table>'
       + '<div class="tip">F1 开关 · 按 ` 收起右上角面板 · 游戏内对话是英文，暂无中文</div>';
     document.body.appendChild(box);

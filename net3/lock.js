@@ -11,10 +11,9 @@
 (function (global) {
   "use strict";
 
-  const P1 = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyN", "KeyM"];
-  const P2 = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyG", "KeyH"];
-  const P3 = ["KeyI", "KeyK", "KeyJ", "KeyL", "KeyO", "KeyP"];
-  const ALL = P1.concat(P2, P3);
+  const P1 = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyJ", "KeyK"];
+  const P2 = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "KeyN", "KeyM"];
+  const ALL = P1.concat(P2);
   const BIT = {};
   ALL.forEach((k, i) => (BIT[k] = 1 << i));
 
