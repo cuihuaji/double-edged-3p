@@ -495,6 +495,29 @@
   /* 按档位限制「推帧」频率。play3p 每走一步调一次 track.requestFrame()，
    * 而这个调用会把整张 880×640 画布从 GPU 拷回 CPU 一次（同步），手机上最伤的就是这一下。
    * 这里包一层：按当前档位的 fps 掐掉多余的帧，读回和编码都跟着一起省。 */
+  /* 只依赖入参，提到顶层：没有好友连入时也能被 __npSetLevel / 控制台调用验证 */
+  window.__npApplyQuality = function (sender) {
+    if (!sender) return false;
+    window.__npSender = sender;
+    const q = window.__deQ();
+    try { if (sender.track) sender.track.contentHint = q.hint; } catch (e) {}
+    try {
+      const p = sender.getParameters();
+      p.degradationPreference = q.degrad;
+      if (!p.encodings || !p.encodings.length) p.encodings = [{ active: true }];
+      const e0 = p.encodings[0];
+      e0.active = true;
+      e0.maxBitrate = q.bitrate;
+      e0.maxFramerate = q.fps;
+      e0.scaleResolutionDownBy = q.scale;
+      e0.priority = "high";
+      try { e0.networkPriority = "high"; } catch (e) {}
+      const ret = sender.setParameters(p);
+      if (ret && ret.catch) ret.catch((err) => { window.__npQErr = String((err && err.message) || err); });
+      window.__npQuality = { level: q.name, bitrate: q.bitrate, fps: q.fps, scale: q.scale, degradation: q.degrad };
+      return true;
+    } catch (e) { window.__npQErr = String((e && e.message) || e); return false; }
+  };
   window.__deThrottleTrack = function (tr) {
     if (!tr || tr.__deWrapped) return tr;
     try {
@@ -572,29 +595,8 @@
            *   __npQualityMode("smooth")  允许编码器降分辨率换流畅
            *   __npQualityMode("sharp")   死守 880×640（默认）
            * 默认 sharp，是因为之前 4 倍缩放的糊图就是这么来的。 */
-          function npApplyQuality(sender) {
-            if (!sender) return false;
-            window.__npSender = sender;
-            const q = window.__deQ();
-            try { if (sender.track) sender.track.contentHint = q.hint; } catch (e) {}
-            try {
-              const p = sender.getParameters();
-              p.degradationPreference = q.degrad;
-              if (!p.encodings || !p.encodings.length) p.encodings = [{ active: true }];
-              const e0 = p.encodings[0];
-              e0.active = true;
-              e0.maxBitrate = q.bitrate;
-              e0.maxFramerate = q.fps;
-              e0.scaleResolutionDownBy = q.scale;
-              e0.priority = "high";
-              try { e0.networkPriority = "high"; } catch (e) {}
-              const ret = sender.setParameters(p);
-              if (ret && ret.catch) ret.catch((err) => { window.__npQErr = String((err && err.message) || err); });
-              window.__npQuality = { level: q.name, bitrate: q.bitrate, fps: q.fps, scale: q.scale, degradation: q.degrad };
-              return true;
-            } catch (e) { window.__npQErr = String((e && e.message) || e); return false; }
-          }
-          window.__npApplyQuality = npApplyQuality;
+          const npApplyQuality = window.__npApplyQuality;
+
           try {
             const pc = call && call.peerConnection;
             const sender = pc && pc.getSenders && pc.getSenders()[0];
