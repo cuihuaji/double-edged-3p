@@ -50,6 +50,27 @@
   "use strict";
   var Q = new URLSearchParams(location.search);
   var SEED = parseInt(Q.get("seed") || "20261027", 10) >>> 0;
+
+  /* ---- 渲染分辨率：?dpr=1（借 N 社手机版的思路 —— 低分辨率渲染、再放大显示）----
+   * 运行时 WebGL 的 configureBackBuffer 里写的是 width = stageW * devicePixelRatio，
+   * 手机 dpr=3 时 550×400 的舞台会变成 1650×1200 的后备缓冲，一帧多画 9 倍像素，
+   * 加上我们把容器开成 880×640，实际是原生尺寸的 23 倍填充量 —— 这就是手机开房卡的主因。
+   * dpr=1 把后备缓冲钉回逻辑像素，屏幕上的放大交给 CSS 合成（GPU，几乎免费）。 */
+  var FORCED_DPR = (function () {
+    var v = Q.get("dpr");
+    if (v === null || v === "") return 0;
+    var n = parseFloat(v);
+    return (isFinite(n) && n > 0 && n <= 4) ? n : 0;
+  })();
+  if (FORCED_DPR) {
+    try {
+      Object.defineProperty(window, "devicePixelRatio", {
+        configurable: true, enumerable: true,
+        get: function () { return FORCED_DPR; }
+      });
+      window.__deDpr = FORCED_DPR;
+    } catch (e) {}
+  }
   var STEP = 1000 / 30;
 
   var L = {

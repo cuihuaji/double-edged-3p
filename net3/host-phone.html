@@ -13,12 +13,13 @@
     font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; color: #cfd6df; }
 
   #wrap { position: absolute; inset: 0; }
-  /* 固定 880x640：AVM 按 iframe 内部视口决定画布像素和舞台比例，
-     两端视口一样大，命中判定用的包围盒才会一样。
-     外层用 transform 放大显示，缩放不影响内部视口。 */
+  /* 550x400 = 游戏原生舞台尺寸（N 社官方 config: width 550 / height 400 / showAll）。
+     以前用 880×640 是锁步时代为了两端包围盒一致；现在只剩房主跑游戏，没人需要那个尺寸了，
+     而 880×640 是 550×400 的 2.56 倍填充量，手机上纯属白烧。
+     ?rs=880 可以退回旧的 880×640（对比用）。 */
   #game {
     position: absolute; left: 50%; top: 50%;
-    width: 880px; height: 640px; border: 0; display: block;
+    width: 550px; height: 400px; border: 0; display: block;
     pointer-events: none; transform-origin: center center;
     transform: translate(-50%, -50%);
   }
@@ -165,7 +166,14 @@
     }
   };
 
-  iframe.src = "../html5/play3p.html?seed=" + SEED + "&cb=" + Date.now() + "&nolock=1";   // 远程同乐：不锁步
+  /* 渲染尺寸：默认原生 550×400 + 画布不乘 dpr（N 社官方 config 就是 550×400，showAll 缩放）。
+     ?rs=880 退回旧的 880×640（锁步时代遗留，只做对比用）。 */
+  const RS = (function () { try { return new URLSearchParams(location.search).get("rs") || ""; } catch (e) { return ""; } })();
+  const DEW = RS === "880" ? 880 : 550;
+  const DEH = RS === "880" ? 640 : 400;
+  iframe.style.width = DEW + "px";
+  iframe.style.height = DEH + "px";
+  iframe.src = "../html5/play3p.html?seed=" + SEED + "&cb=" + Date.now() + "&nolock=1" + (DEW === 550 ? "&dpr=1" : "");   // 非锁步；画布不乘 dpr
 
   const NOLOCK = true;   // 远程同乐是唯一模式：锁步永久禁用（好友只看视频+转发输入）
   const lock = new Lock({
@@ -219,10 +227,10 @@
         // clicklayer 的 e.clientX/Y 在宿主页面空间；canvas 的 rect 在 iframe 内部空间（0,0 起）。
         // 必须先把页面坐标换算成 iframe 内坐标：用 iframe 自身在屏幕上的 rect + 缩放比。
         const fr = iframe.getBoundingClientRect();
-        const inX = (e.clientX - fr.left) / fr.width * 880;   // 880=canvas 内部宽
-        const inY = (e.clientY - fr.top) / fr.height * 640;  // 640=canvas 内部高
-        const fx = Math.min(1, Math.max(0, inX / 880));
-        const fy = Math.min(1, Math.max(0, inY / 640));
+        const inX = (e.clientX - fr.left) / fr.width * DEW;
+        const inY = (e.clientY - fr.top) / fr.height * DEH;
+        const fx = Math.min(1, Math.max(0, inX / DEW));
+        const fy = Math.min(1, Math.max(0, inY / DEH));
         hostClick(fx, fy);
       } catch (err) {}
     }, false);
@@ -235,9 +243,9 @@
     if (P1KEYS.indexOf(e.code) >= 0) { e.preventDefault(); hostKey(false, e.code); }
   }, true);
 
-  /* 让 iframe 显示尺寸跟随窗口，但内部视口恒为 880x640 */
+  /* 让 iframe 显示尺寸跟随窗口，但内部视口恒为原生 550x400（?rs=880 退回旧尺寸） */
   function fitIframe() {
-    const k = Math.min(window.innerWidth / 880, window.innerHeight / 640);
+    const k = Math.min(window.innerWidth / DEW, window.innerHeight / DEH);
     iframe.style.transform = "translate(-50%, -50%) scale(" + Math.max(0.3, k) + ")";
   }
   window.addEventListener("resize", fitIframe);
@@ -476,15 +484,15 @@
    * 电脑房主用「清晰」（880×640 不缩 + 6Mbps）没问题；手机要同时跑游戏(AS3/JS)和编码视频，
    * 那套参数直接把手机压死：编码器占满 CPU → 游戏掉帧、好友端也一顿一顿。
    * 三档，默认「流畅」；房号条上的按钮可以手动切，选择存 localStorage。
-   *   省电  scale 2.5 / 20fps / 700kbps
-   *   流畅  scale 2   / 24fps / 1.2Mbps   ← 默认
-   *   清晰  scale 1   / 30fps / 3Mbps
+   *   省电  scale 2 / 20fps / 700kbps（275×200）
+   *   流畅  scale 1 / 24fps / 900kbps（550×400 原生 1:1）← 默认
+   *   清晰  scale 1 / 30fps / 1.8Mbps
    * 另外巡检 outbound-rtp 的 qualityLimitationReason：连续 CPU 受限就自动降一档（只降不升），
    * 稳定一会儿再回到用户选的档位。降档只改「当前」不改「用户选择」，不会越用越低。 */
   const DE_QLV = [
-    { name: "省电", scale: 2.5, fps: 20, bitrate: 700000, hint: "motion", degrad: "balanced" },
-    { name: "流畅", scale: 2.0, fps: 24, bitrate: 1200000, hint: "motion", degrad: "balanced" },
-    { name: "清晰", scale: 1.0, fps: 30, bitrate: 3000000, hint: "detail", degrad: "maintain-resolution" }
+    { name: "省电", scale: 2, fps: 20, bitrate: 700000, hint: "motion", degrad: "balanced" },
+    { name: "流畅", scale: 1, fps: 24, bitrate: 900000, hint: "motion", degrad: "balanced" },
+    { name: "清晰", scale: 1, fps: 30, bitrate: 1800000, hint: "detail", degrad: "maintain-resolution" }
   ];
   window.__deQLv = DE_QLV;
   window.__deQCeil = (function () {
