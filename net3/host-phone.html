@@ -103,6 +103,11 @@
     background: rgba(47, 125, 209, .2); color: #cfe6ff; border: 1px solid rgba(120, 190, 255, .45);
   }
   #de-fs-btn:active { transform: translateY(1px); }
+  #de-stick-btn {
+    padding: 3px 9px; border-radius: 999px; cursor: pointer; font-size: 11.5px; line-height: 1.3;
+    background: rgba(47, 125, 209, .2); color: #cfe6ff; border: 1px solid rgba(120, 190, 255, .45);
+  }
+  #de-stick-btn:active { transform: translateY(1px); }
 
   #de-rotate {
     display: none; position: fixed; inset: 0; z-index: 10003; align-items: center; justify-content: center;
@@ -146,6 +151,7 @@
 
 <script src="vendor/ruffle-touch.js"></script>
 <script src="fsm.js?v=1"></script>
+<script src="stick.js?v=1"></script>
 <script src="../net2/common.js"></script>
 <script src="peerjs.min.js"></script>
 <script src="diag.js?v=3"></script>
@@ -938,7 +944,8 @@
   bar.id = "de-room-bar";
   bar.innerHTML = '<span class="lbl">房号</span><b id="de-room-code">…</b><span class="st" id="de-room-state">开房中</span>' +
     '<button type="button" id="de-q">画质</button>' +
-    '<button type="button" id="de-fs-btn" title="全屏并锁定横屏">⛶</button>';
+    '<button type="button" id="de-fs-btn" title="全屏并锁定横屏">⛶</button>' +
+    '<button type="button" id="de-stick-btn" title="切换摇杆/十字键">摇杆</button>';
   document.body.appendChild(bar);
 
   var hint = document.createElement("div");
@@ -984,12 +991,27 @@
       paintQ();
     });
     window.addEventListener("de-qchange", paintQ);
-    if (window.DEFs) window.DEFs.attach(document.getElementById("de-fs-btn"));
+    /* 虚拟摇杆：方向键走 ArrowXxx（P1），和十字键同一条 KeyboardEvent 通道 */
+  if (window.DEStick) window.DEStick.mount({ deadzone: 0.22 });
+    var stickBtn = document.getElementById("de-stick-btn");
+    function paintStick() {
+      if (!stickBtn || !window.DEStick) return;
+      stickBtn.textContent = window.DEStick.enabled() ? "摇杆" : "十字";
+    }
+    if (stickBtn && window.DEStick) {
+      paintStick();
+      stickBtn.addEventListener("click", function (e) {
+        e.stopPropagation();
+        window.DEStick.setEnabled(!window.DEStick.enabled(), true);
+        paintStick();
+      });
+    }
+  if (window.DEFs) window.DEFs.attach(document.getElementById("de-fs-btn"));
     else setTimeout(function () { if (window.DEFs) window.DEFs.attach(document.getElementById("de-fs-btn")); }, 300);
   }
 
   bar.addEventListener("click", function (e) {
-    if (e.target && /^de-(q|fs-btn)$/.test(e.target.id)) return;
+    if (e.target && /^de-(q|fs-btn|stick-btn)$/.test(e.target.id)) return;
     var t = roomText();
     if (isRoom(t)) {
       try { navigator.clipboard.writeText(t).catch(function () {}); } catch (e) {}

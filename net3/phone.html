@@ -111,6 +111,7 @@
 <link rel="stylesheet" href="vendor/ruffle-touch.css">
   <script src="vendor/ruffle-touch.js"></script>
 <script src="fsm.js?v=1"></script>
+<script src="stick.js?v=1"></script>
 <script src="lock.js?v=8"></script>
 <script>
 (function () {
@@ -572,6 +573,16 @@
     fsBtn.type = "button";
     fsBtn.textContent = "⛶";
     fsBtn.title = "全屏并锁定横屏";
+    /* 虚拟摇杆：好友端方向键是 P2 的 WASD，走同一条转发通道 */
+    if (window.DEStick) window.DEStick.mount({
+      deadzone: 0.22,
+      keys: {
+        up:    { key: "w", code: "KeyW", keyCode: 87 },
+        down:  { key: "s", code: "KeyS", keyCode: 83 },
+        left:  { key: "a", code: "KeyA", keyCode: 65 },
+        right: { key: "d", code: "KeyD", keyCode: 68 }
+      }
+    });
     if (window.DEFs) window.DEFs.attach(fsBtn);
 
     document.body.appendChild(fsBtn);
