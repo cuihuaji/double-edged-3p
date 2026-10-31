@@ -1066,10 +1066,10 @@
         ".ruffle-touch-dpad{width:min(34vh,17vw) !important;height:min(34vh,17vw) !important}",
         ".ruffle-touch-dpad .dpad-btn{font-size:min(3.2vh,17px) !important}",
         ".ruffle-touch-actions .action-group{flex-direction:column-reverse !important;align-items:flex-end !important;",
-          "gap:min(2.2vh,11px) !important}",
+          "gap:min(3.6vh,18px) !important}",
         ".action-z,.action-x{width:min(19vh,10vw) !important;height:min(19vh,10vw) !important;",
           "font-size:min(3.4vh,19px) !important}",
-        ".action-x{margin-right:min(8vh,4.5vw) !important}",
+        ".action-x{margin-right:min(13vh,7vw) !important}",
         "#de-room-bar{font-size:12px !important;padding:4px 12px !important}",
       "}",
       "@media (orientation:portrait){",
@@ -1128,7 +1128,28 @@
     }
     return null;
   }
-  function codeAtPoint(x, y) { return codeOfEl(document.elementFromPoint(x, y)); }
+  /* 攻/跳两个圆挨得很近（横屏时跳就在攻正上方、中间只隔十几像素）。原来用
+   * elementFromPoint 判定，等于「谁的元素在上层谁赢」：手指按在攻上，只要系统报点
+   * 抖一下、或者稍微一滑，就被判成跳 → 攻被松掉、跳被按下，表现就是「双指一起按
+   * 只出跳跃」。改成按两个按钮各自的圆心做几何命中：取最近的圆心，超出半径 1.35 倍
+   * 才算没命中。跳动不了攻的触点，也不受层级顺序影响。 */
+  function codeAtPoint(x, y) {
+    var best = null, bd = 1e9, k, el, b, cx, cy, dx, dy, d, R;
+    for (k in BTN_OF) {
+      el = document.querySelector(BTN_OF[k]);
+      if (!el) continue;
+      b = el.getBoundingClientRect();
+      if (!b.width) continue;
+      cx = b.left + b.width / 2;
+      cy = b.top + b.height / 2;
+      dx = x - cx; dy = y - cy;
+      d = Math.sqrt(dx * dx + dy * dy);
+      R = Math.max(b.width, b.height) / 2 * 1.35;   /* 拇指偏一点仍算命中，太远算没按到 */
+      if (d > R) continue;
+      if (d < bd) { bd = d; best = k; }
+    }
+    return best;
+  }
 
   function emit(code, on) {
     var ev;
@@ -1197,13 +1218,9 @@
         if (touchCode[id]) { drop(id, touchCode[id]); delete touchCode[id]; }
       }
     } else {
-      all = e.touches || [];
-      for (i = 0; i < all.length; i++) {
-        t = all[i]; id = "t" + t.identifier;
-        if (!touchCode[id]) continue;
-        code = codeAtPoint(t.clientX, t.clientY);
-        if (code && code !== touchCode[id]) { drop(id, touchCode[id]); touchCode[id] = code; hold(id, code); }
-      }
+      /* touchmove：故意什么都不做。按钮一按下就锁在那个键上，松手才释放 ——
+       * 手指在攻上滑动、或者系统报点抖动，绝不能把攻改成跳
+       * （那正是「双指一起按只出跳跃」的直接原因）。 */
     }
   }
   var TOPTS = { passive: true, capture: true };
