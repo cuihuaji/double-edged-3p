@@ -73,6 +73,7 @@
   code { color: #8ab4d8; }
   /* ================= 手机房主 ================= */
   html, body {
+    height: 100%; height: 100dvh; overflow: hidden; background: #05070a;
     touch-action: none; overscroll-behavior: none;
     -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
@@ -97,6 +98,11 @@
     font: 600 11.5px/1.3 "Microsoft YaHei", system-ui, sans-serif;
   }
   #de-q:active { transform: translateY(1px); }
+  #de-fs-btn {
+    padding: 3px 9px; border-radius: 999px; cursor: pointer; font-size: 12px; line-height: 1.3;
+    background: rgba(47, 125, 209, .2); color: #cfe6ff; border: 1px solid rgba(120, 190, 255, .45);
+  }
+  #de-fs-btn:active { transform: translateY(1px); }
 
   #de-rotate {
     display: none; position: fixed; inset: 0; z-index: 10003; align-items: center; justify-content: center;
@@ -139,6 +145,7 @@
 </div>
 
 <script src="vendor/ruffle-touch.js"></script>
+<script src="fsm.js?v=1"></script>
 <script src="../net2/common.js"></script>
 <script src="peerjs.min.js"></script>
 <script src="diag.js?v=3"></script>
@@ -930,7 +937,8 @@
   var bar = document.createElement("div");
   bar.id = "de-room-bar";
   bar.innerHTML = '<span class="lbl">房号</span><b id="de-room-code">…</b><span class="st" id="de-room-state">开房中</span>' +
-    '<button type="button" id="de-q">画质</button>';
+    '<button type="button" id="de-q">画质</button>' +
+    '<button type="button" id="de-fs-btn" title="全屏并锁定横屏">⛶</button>';
   document.body.appendChild(bar);
 
   var hint = document.createElement("div");
@@ -976,10 +984,12 @@
       paintQ();
     });
     window.addEventListener("de-qchange", paintQ);
+    if (window.DEFs) window.DEFs.attach(document.getElementById("de-fs-btn"));
+    else setTimeout(function () { if (window.DEFs) window.DEFs.attach(document.getElementById("de-fs-btn")); }, 300);
   }
 
   bar.addEventListener("click", function (e) {
-    if (e.target && e.target.id === "de-q") return;
+    if (e.target && /^de-(q|fs-btn)$/.test(e.target.id)) return;
     var t = roomText();
     if (isRoom(t)) {
       try { navigator.clipboard.writeText(t).catch(function () {}); } catch (e) {}

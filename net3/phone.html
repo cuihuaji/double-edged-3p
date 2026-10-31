@@ -9,7 +9,7 @@
 <title>Double Edged · 加入</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body { width: 100%; height: 100%; background: #07090c; overflow: hidden;
+  html, body { width: 100%; height: 100%; height: 100dvh; background: #07090c; overflow: hidden;
     font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; color: #cfd6df;
     /* 整页禁掉浏览器手势：不禁的话两指会被当成捏合缩放，浏览器直接 touchcancel 掉其中一根 */
     touch-action: none; overscroll-behavior: none;
@@ -110,6 +110,7 @@
 <script src="subs.js?v=10"></script>
 <link rel="stylesheet" href="vendor/ruffle-touch.css">
   <script src="vendor/ruffle-touch.js"></script>
+<script src="fsm.js?v=1"></script>
 <script src="lock.js?v=8"></script>
 <script>
 (function () {
@@ -571,19 +572,8 @@
     fsBtn.type = "button";
     fsBtn.textContent = "⛶";
     fsBtn.title = "全屏并锁定横屏";
-    fsBtn.addEventListener("click", function () {
-      var el = document.documentElement;
-      try {
-        var p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: "hide" }) : null;
-        if (p && p.then) p.then(lockLand).catch(function () {});
-        else lockLand();
-      } catch (e) { lockLand(); }
-      function lockLand() {
-        try {
-          if (screen.orientation && screen.orientation.lock) screen.orientation.lock("landscape").catch(function () {});
-        } catch (e2) {}
-      }
-    });
+    if (window.DEFs) window.DEFs.attach(fsBtn);
+
     document.body.appendChild(fsBtn);
 
     var rot = document.createElement("div");
