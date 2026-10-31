@@ -441,78 +441,6 @@
    * 按到 P2 的键就会把青色斯巴达拉进来，并把 numPlayers 改成 2。 */
   var P2KEYS = { KeyW: 1, KeyA: 1, KeyS: 1, KeyD: 1, KeyG: 1, KeyH: 1 };
 
-  /* ---- 必杀（攻击+跳）的按键次序 ----
-   * 游戏是按帧轮询 customDown 的。两个键在「同一帧」一起 down 时，它会先走跳跃分支，
-   * 攻击退化成空中的普通攻击 —— 表现就是「双指同时按，只出跳跃」。
-   * 真机上「先按攻击、再按跳」稳定能出，说明它要的是「攻击已按住 → 跳在这一帧才按下」。
-   * 所以：攻击立即放行；跳的 keydown 压后一帧（40ms）再发，这一帧里若攻击落下，
-   * 次序就自动变成正确的那个。只影响跳，攻击永远不等，代价是跳跃晚 ≤40ms。
-   * 压后期间就松手（轻点）的，补一次按下再把抬起延后一帧，不会把一次轻点吃掉。 */
-  var SPREAD = 60;
-  var MIN_SEE = 55;                                 /* 键必须被游戏看到至少一帧（33.3ms）多一点 */
-  var ATK_OF  = { KeyM: "KeyN", KeyH: "KeyG" };   /* 跳 → 该玩家的攻击（P1 用 N/M，P2 用 G/H） */
-  var heldKey = {};
-  var pendingJump = {};
-  var dbgStag = { defer: 0, immediate: 0, needDelay: 0, plainUp: 0 };
-
-  var ATK_CODES = { KeyN: 1, KeyG: 1 };
-  var lastAtkAt = {};                              /* 攻击 keydown 的时刻，用来判断「隔了一帧没有」 */
-  var downAt = {};                                 /* 每个键真正发出去的时刻 */
-  var JUMP_CODES = { KeyM: 1, KeyH: 1 };
-
-  function applyKeyDown(code) {
-    var t = (window.performance || Date).now();
-    if (ATK_CODES[code]) lastAtkAt[code] = t;
-    downAt[code] = t;
-    fireKey("keydown", code);
-  }
-  function applyKeyUp(code) { fireKey("keyup", code); }
-
-  function queueOrFireDown(code) {
-    heldKey[code] = 1;
-    if (pendingJump[code]) { clearTimeout(pendingJump[code]); pendingJump[code] = null; }
-    var atk = ATK_OF[code];
-    if (atk) {
-      var t = (window.performance || Date).now();
-      var last = lastAtkAt[atk];
-      /* 攻击已经按住了、而且「隔了至少一帧」→ 次序本来就对，跳立即发。
-       * 其余情况（攻击同一帧刚到 / 攻击还没来）→ 跳压后一帧：
-       *   - 攻击稍后落下：它先发，跳在 40ms 后发 → 次序正确
-       *   - 真的只是跳：晚一帧（33ms 级别的游戏，感觉不到） */
-      var ok = heldKey[atk] && last !== undefined && (t - last >= SPREAD);
-      if (!ok) {
-        dbgStag.defer++;
-        pendingJump[code] = setTimeout(function () {
-          pendingJump[code] = null;
-          if (heldKey[code]) applyKeyDown(code);
-        }, SPREAD);
-        return;
-      }
-    }
-    dbgStag.immediate++;
-    applyKeyDown(code);
-  }
-
-  function queueOrFireUp(code) {
-    var t = (window.performance || Date).now();
-    if (pendingJump[code]) {                 /* 压后期间就松手：先补按下 */
-      clearTimeout(pendingJump[code]);
-      pendingJump[code] = null;
-      applyKeyDown(code);
-    }
-    delete heldKey[code];
-    /* 跳的「按下」可能被压后过，剩下的可见时间会不足一帧 —— 轻点就会整帧错过。
-     * 这里补足 MIN_SEE，保证无论如何游戏都能看到一次跳。 */
-    var need = 0;
-    if (JUMP_CODES[code] && downAt[code]) need = MIN_SEE - (t - downAt[code]);
-    if (need > 0) {
-      dbgStag.needDelay++;
-      setTimeout(function () { if (!heldKey[code]) applyKeyUp(code); }, need);
-    } else {
-      dbgStag.plainUp++;
-      applyKeyUp(code);
-    }
-  }
   /* 一次事件批量应用（同一帧内） */
   L.applyEvents = function (list) {
     L.evCount = (L.evCount || 0) + list.length;
@@ -529,8 +457,8 @@
       }
       /* 单人：丢掉 P2 按键，p2Join 就永远不会被触发 */
       if (window.__deMode === 1 && (e[0] === "d" || e[0] === "u") && P2KEYS[e[1]]) continue;
-      if (e[0] === "d") queueOrFireDown(e[1]);
-      else if (e[0] === "u") queueOrFireUp(e[1]);
+      if (e[0] === "d") fireKey("keydown", e[1]);
+      else if (e[0] === "u") fireKey("keyup", e[1]);
       else if (e[0] === "md") {
         // 必须先移动一次：AVM 用"最后一次 mousemove"的坐标做命中判定，
         // 只发 down/up 会落在它记录的旧位置上，菜单永远点不动。
@@ -558,7 +486,6 @@
     } catch (e) { return 0; }
   };
 
-  L.dbgStag = dbgStag;
   window.__lock = L;
 
   /* ---- 远程同乐（nolock）：游戏进战斗时会调 window.__pauseAuto 想把帧权交给锁步，
