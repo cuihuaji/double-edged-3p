@@ -98,7 +98,7 @@
   </details>
 
   <div class="hint">
-    你玩 <code>WASD</code> 移动 · <code>J</code> 攻击 · <code>K</code> 跳。菜单只能你点。
+    你玩 <code>WASD</code> 移动 · <code>J</code> 攻击 · <code>K</code> 跳 · <code>G</code> 跳到 BOSS。菜单只能你点。
   </div>
 </div>
 
@@ -149,7 +149,7 @@
   /* ===== 房主本地输入：直接打 iframe.contentWindow.__lock（与好友转发同一条已验证通道） =====
    * 不再依赖 lock.js 的 self.L（NOLOCK 模式下不稳）。__lock 是 play3p 顶层暴露的 L 对象。
    * play3p.applyEvents 接受: ["md"/"mu", fx, fy] 鼠标；["d"/"u", code] 键盘。 */
-  const P1KEYS = ["KeyW","KeyA","KeyS","KeyD","KeyJ","KeyK"];
+  const P1KEYS = ["KeyW","KeyA","KeyS","KeyD","KeyJ","KeyK","KeyG","KeyH"];   // G/H 给调试键（跳 boss）用，游戏本体不绑
   const P2KEYS = ["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","KeyN","KeyM"];
 
   function hostL() { return iframe.contentWindow && iframe.contentWindow.__lock; }
