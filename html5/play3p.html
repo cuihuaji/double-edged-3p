@@ -597,7 +597,7 @@
     filenameNoSdk: "double-edged",
     binary: [
       { name: "fonts.swf", path: "assets/fonts.swf", size: 30506 },
-      { name: "game_3p", path: "assets/game_3p.swf?v=boss5", size: 2075539, resourceType: "GAME" }
+      { name: "game_3p", path: "assets/game_3p.swf?v=boss6", size: 2075948, resourceType: "GAME" }
     ],
     runtime: "js/Nitrome.js"
   };
@@ -778,6 +778,58 @@
 
   installGuard(); sweep();
   setInterval(function () { installGuard(); sweep(); }, 500);
+})();
+</script>
+
+<!-- ==== 调试日志面板（抓 boss 抓人 bug 用，正式版会删） ==== -->
+<div id="deLogPanel" style="position:fixed;left:6px;bottom:6px;z-index:99999;width:min(52vw,720px);max-height:34vh;display:flex;flex-direction:column;background:rgba(4,10,14,.86);color:#9fe8ff;font:11px/1.35 Consolas,monospace;border:1px solid #1d3b4a;border-radius:4px;box-shadow:0 4px 18px rgba(0,0,0,.5)">
+  <div style="display:flex;gap:6px;align-items:center;padding:4px 6px;border-bottom:1px solid #1d3b4a;background:rgba(20,40,52,.9)">
+    <b style="color:#7fd">日志</b><span id="deLogCount" style="color:#567">0</span>
+    <span style="flex:1"></span>
+    <button id="deLogCopy" style="font:11px Consolas;background:#123;color:#9fe8ff;border:1px solid #2b5568;border-radius:3px;padding:1px 7px;cursor:pointer">复制</button>
+    <button id="deLogSave" style="font:11px Consolas;background:#123;color:#9fe8ff;border:1px solid #2b5568;border-radius:3px;padding:1px 7px;cursor:pointer">下载</button>
+    <button id="deLogMin" style="font:11px Consolas;background:#123;color:#9fe8ff;border:1px solid #2b5568;border-radius:3px;padding:1px 7px;cursor:pointer">收起</button>
+  </div>
+  <pre id="deLogBody" style="margin:0;padding:4px 6px;overflow:auto;flex:1;white-space:pre-wrap;word-break:break-all"></pre>
+</div>
+<script>
+(function(){
+  if (window.__deLogReady) return; window.__deLogReady = true;
+  var LOG = [], MAX = 20000;
+  window.__deLog = LOG;
+  function flat(a){ var o=[]; for(var i=0;i<a.length;i++){ var v=a[i]; if(typeof v==='string'){ if(v.indexOf('%c')===0) continue; o.push(v.replace(/^Trace from SWF:\s*/,'')); } else { try{o.push(JSON.stringify(v));}catch(e){o.push(String(v));} } } return o.join(' '); }
+  function push(tag,args){ try{ LOG.push((tag?tag+' ':'')+flat(args)); if(LOG.length>MAX) LOG.splice(0,LOG.length-MAX); }catch(e){} }
+  ['log','warn','error','info'].forEach(function(k){
+    var orig = console[k] ? console[k].bind(console) : function(){};
+    console[k] = function(){ push(k==='log'?'':(k+':'), arguments); orig.apply(null, arguments); };
+  });
+  window.addEventListener('error', function(e){ push('JSERR', [e.message + ' @' + (e.filename||'') + ':' + (e.lineno||0)]); });
+  window.addEventListener('unhandledrejection', function(e){ push('JSERR', ['promise ' + e.reason]); });
+  var body=document.getElementById('deLogBody'), cnt=document.getElementById('deLogCount'), panel=document.getElementById('deLogPanel');
+  function render(){
+    if(!body) return;
+    var tail = LOG.slice(-400).join('\n');
+    if (body.textContent !== tail) { body.textContent = tail; body.scrollTop = body.scrollHeight; }
+    if (cnt) cnt.textContent = LOG.length;
+  }
+  setInterval(render, 350);
+  function name(){ var d=new Date(), p=function(n){return ('0'+n).slice(-2);}; return 'de-log-'+d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'-'+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds())+'.txt'; }
+  function dump(){ return LOG.join('\n'); }
+  document.getElementById('deLogCopy').onclick=function(){
+    var t=dump();
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(function(){ this.textContent='已复制'; }.bind(this), function(){ window.prompt('手动复制：', t); }); }
+    else { window.prompt('手动复制：', t); }
+  };
+  document.getElementById('deLogSave').onclick=function(){
+    var b=new Blob([dump()],{type:'text/plain'}), a=document.createElement('a');
+    a.href=URL.createObjectURL(b); a.download=name(); a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+  };
+  document.getElementById('deLogMin').onclick=function(){
+    var collapsed = body.style.display==='none';
+    body.style.display = collapsed?'block':'none';
+    panel.style.maxHeight = collapsed?'34vh':'auto';
+    this.textContent = collapsed?'收起':'展开';
+  };
 })();
 </script>
 </body>
