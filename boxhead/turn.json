@@ -1,0 +1,6 @@
+{
+  "_说明": "填上 TURN 后中继生效，例：{\"urls\":\"turn:host:3478\",\"username\":\"u\",\"credential\":\"p\"}",
+  "urls": "",
+  "username": "",
+  "credential": ""
+}

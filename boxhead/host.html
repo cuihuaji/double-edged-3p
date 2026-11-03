@@ -412,6 +412,7 @@ async function boot() {
     fitStage();
     setState('准备就绪', 'warn');
 
+    await ensureTurn();
     startPeer();
   } catch (e) {
     console.error(e);
@@ -535,7 +536,7 @@ addEventListener('beforeunload', () => {
     const room = roomEl ? (roomEl.textContent || roomEl.value || '-') : '-';
     el.textContent =
       '房号 ' + room +
-      '  建 2026-11-03-1' +
+      '  建 2026-11-03-2' +
       '  信令 ' + (p && p.open ? 'on' : 'off') +
       '  好友 ' + (c && c.open ? 'on' : 'off') +
       '  ICE ' + (pc ? pc.iceConnectionState : '-') +
@@ -548,7 +549,7 @@ addEventListener('beforeunload', () => {
    页面里写死 BUILD；线上 version.json 一旦更新，旧页面自己跳到带 ?v= 的新地址。
    目的是不让「好友那边还是旧缓存」这种事再发生。 */
 (function () {
-  const BUILD = '2026-11-03-1';
+  const BUILD = '2026-11-03-2';
   const u = new URL(location.href);
   if (u.searchParams.get('v') === BUILD) return;
   fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
@@ -560,6 +561,25 @@ addEventListener('beforeunload', () => {
     })
     .catch(() => {});
 })();
+
+/* ---------- TURN 配置（turn.json）----------
+   填了就在 ICE 里加上中继；没填就纯 STUN，行为和以前一样。
+   单独放文件，是为了以后换 TURN 不用改页面代码。 */
+let __turnPromise = null;
+function ensureTurn() {
+  if (__turnPromise) return __turnPromise;
+  __turnPromise = fetch('turn.json?t=' + Date.now(), { cache: 'no-store' })
+    .then((r) => r.json())
+    .then((j) => {
+      if (!j || !j.urls) return null;
+      const s = { urls: j.urls, username: j.username || '', credential: j.credential || '' };
+      PEER_OPTS.config.iceServers.unshift(s);
+      window.__turn = s.urls;
+      return s;
+    })
+    .catch(() => null);
+  return __turnPromise;
+}
 </script>
 </body>
 </html>
