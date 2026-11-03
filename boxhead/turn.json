@@ -1,6 +1,6 @@
 {
-  "_说明": "填上 TURN 后中继生效，例：{\"urls\":\"turn:host:3478\",\"username\":\"u\",\"credential\":\"p\"}",
-  "urls": "",
+  "_说明": "填上 TURN 后中继生效。urls 可以是字符串或数组；Cloudflare/Metered 的临时凭证也能直接填。",
+  "urls": [],
   "username": "",
   "credential": ""
 }

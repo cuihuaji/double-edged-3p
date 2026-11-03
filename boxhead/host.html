@@ -520,7 +520,8 @@ addEventListener('beforeunload', () => {
     const c = (typeof conn !== 'undefined') ? conn : null;
     const pc = c && c.peerConnection;
     hook(pc);
-    let remote = {};
+    const remote = {};
+    const local = {};
     if (pc) {
       try {
         const st = await pc.getStats();
@@ -528,21 +529,29 @@ addEventListener('beforeunload', () => {
           if (r.type === 'remote-candidate') {
             const t = r.candidateType || '?';
             remote[t] = (remote[t] || 0) + 1;
+          } else if (r.type === 'local-candidate') {
+            const t = r.candidateType || '?';
+            local[t] = (local[t] || 0) + 1;
           }
         });
       } catch (e) {}
     }
+    for (const k in seen.L) local[k] = (local[k] || 0) + 0;
+    if (pc && pc.iceConnectionState === 'connected') window.__iceStuck = 0;
     const roomEl = document.getElementById('room') || document.getElementById('code');
     const room = roomEl ? (roomEl.textContent || roomEl.value || '-') : '-';
     el.textContent =
       '房号 ' + room +
-      '  建 2026-11-03-3' +
+      '  建 2026-11-03-4' +
       '  信令 ' + (p && p.open ? 'on' : 'off') +
       '  好友 ' + (c && c.open ? 'on' : 'off') +
       '  ICE ' + (pc ? pc.iceConnectionState : '-') +
-      '  本地候选 ' + fmt(seen.L) +
+      '  本地候选 ' + fmt(local) +
       '  对方候选 ' + fmt(remote) +
-      '  自身映射 ' + (window.__selfMap.state === 'probing' ? '…' : (window.__selfMap.mapped ? '√ ' + window.__selfMap.mapped : '无'));
+      '  自身映射 ' + (window.__selfMap.state === 'probing' ? '…' : (window.__selfMap.mapped ? '√ ' + window.__selfMap.mapped : '无')) +
+      (pc && pc.iceConnectionState === 'checking' && (remote.srflx || 0) > 0 && (window.__iceStuck = (window.__iceStuck || 0) + 1) > 12
+        ? '  ← 两边都有公网映射却打不通：查代理/加速器/防火墙'
+        : '');
   }, 1000);
 })();
 
@@ -550,7 +559,7 @@ addEventListener('beforeunload', () => {
    页面里写死 BUILD；线上 version.json 一旦更新，旧页面自己跳到带 ?v= 的新地址。
    目的是不让「好友那边还是旧缓存」这种事再发生。 */
 (function () {
-  const BUILD = '2026-11-03-3';
+  const BUILD = '2026-11-03-4';
   const u = new URL(location.href);
   if (u.searchParams.get('v') === BUILD) return;
   fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
@@ -573,7 +582,9 @@ function ensureTurn() {
     .then((r) => r.json())
     .then((j) => {
       if (!j || !j.urls) return null;
-      const s = { urls: j.urls, username: j.username || '', credential: j.credential || '' };
+      const list = Array.isArray(j.urls) ? j.urls : [j.urls];
+      if (!list.length || !list[0]) return null;
+      const s = { urls: list.length > 1 ? list : list[0], username: j.username || '', credential: j.credential || '' };
       PEER_OPTS.config.iceServers.unshift(s);
       window.__turn = s.urls;
       return s;

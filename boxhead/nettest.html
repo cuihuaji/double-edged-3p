@@ -105,6 +105,38 @@ function probeStun(url) {
   });
 }
 
+
+/* 地址族检测：看本机能不能出 IPv6 候选。
+   手机常见走 IPv6 直连（无 NAT），电脑只有 IPv4 被对称型 NAT 卡死，
+   表现就是「手机能玩、电脑连不上」。 */
+function probeFamily() {
+  return new Promise((resolve) => {
+    const out = { v4: 0, v6: 0, relay: 0, addrs: [] };
+    let pc;
+    try { pc = new RTCPeerConnection({ iceServers: STUNS.slice(0, 3).map((u) => ({ urls: u })) }); }
+    catch (e) { return resolve(out); }
+    let done = false;
+    const fin = () => { if (done) return; done = true; try { pc.close(); } catch (e) {} resolve(out); };
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return;
+      const c = e.candidate;
+      const t = (c.candidate.match(/ typ (\w+)/) || [])[1] || '?';
+      const a = c.address || '';
+      if (t === 'relay') out.relay++;
+      if (a.indexOf(':') >= 0) {
+        out.v6++;
+        if (out.addrs.length < 6) out.addrs.push('v6 ' + t + ' ' + a);
+      } else if (a) {
+        out.v4++;
+        if (out.addrs.length < 6) out.addrs.push('v4 ' + t + ' ' + a);
+      }
+    };
+    try { pc.createDataChannel('f'); pc.createOffer().then((o) => pc.setLocalDescription(o)).catch(fin); }
+    catch (e) { fin(); }
+    setTimeout(fin, 5000);
+  });
+}
+
 async function run() {
   lines.length = 0;
   outEl.innerHTML = '正在检测…';
@@ -127,6 +159,18 @@ async function run() {
     } else {
       say('  ✗ ' + name + '  →  无响应' + (r.err ? ' (' + r.err + ')' : ''), 'bad');
     }
+  }
+  say('');
+
+  sayHtml('<b>=== 2.5 地址族（手机能玩、电脑连不上时看这里）===');
+  const fam = await probeFamily();
+  say('IPv4 候选: ' + fam.v4 + '   IPv6 候选: ' + fam.v6 + '   relay 候选: ' + fam.relay);
+  fam.addrs.forEach((a) => say('    ' + a));
+  if (fam.v6 > 0) {
+    say('本机有 IPv6 → 有机会走 IPv6 直连（不经 NAT，最容易成功）。', 'ok');
+  } else {
+    say('本机没有 IPv6 → 只能走 IPv4 打洞，对称型 NAT 下容易失败。', 'warn');
+    say('若手机能玩而这台电脑不能，差别很可能就在这里。', 'warn');
   }
   say('');
 
