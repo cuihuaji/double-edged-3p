@@ -223,10 +223,12 @@
     let tries = 0;
     function tryConnect() {
       const conn = peer.connect(id, { reliable: true });
+      try { window.__npConn = conn; } catch (e) {}
       bindConn(conn);
     }
 
     peer = new Peer(null, PEER_OPTS);
+    try { window.__npPeer = peer; } catch (e) {}
     peer.on("open", tryConnect);
     /* ---- 远程同乐：接收房主视频流 + 把本机输入转发给房主 ---- */
     peer.on("call", (call) => {
@@ -937,7 +939,8 @@
 })();
 
 /* ---------- 手机页状态条 ----------
-   手机上没法开控制台，卡在哪全靠这一行。 */
+   手机上没法开控制台，卡在哪全靠这一行。
+   注意：peer 在闭包里，外部拿不到，所以页面里把它挂到 window.__npPeer。 */
 (function () {
   var d = document.createElement("div");
   d.id = "pdiag";
@@ -946,29 +949,33 @@
     "max-width:92vw;white-space:pre-wrap;pointer-events:none";
   document.body.appendChild(d);
   setInterval(function () {
-    var c = window.__npCall;
-    var pc = c && c.peerConnection;
-    var v = document.getElementById("rv");
-    var roomEl = document.getElementById("room");
-    var connOk = false;
     try {
-      var all = (peer && peer.connections) || {};
-      Object.keys(all).forEach(function (k) {
-        (all[k] || []).forEach(function (x) { if (x && x.open) connOk = true; });
-      });
-    } catch (e) {}
-    var sig = "off";
-    try { sig = (typeof peer !== "undefined" && peer && peer.open) ? "on" : "off"; } catch (e9) {}
-    try {
+      var P = window.__npPeer || null;
+      var C = window.__npConn || null;
+      var callObj = window.__npCall || null;
+      var pc = callObj && callObj.peerConnection;
+      var v = document.getElementById("rv");
+      var roomEl = document.getElementById("room");
+
+      var connOk = !!(C && C.open);
+      if (!connOk && P) {
+        try {
+          var all = P.connections || {};
+          Object.keys(all).forEach(function (k) {
+            (all[k] || []).forEach(function (x) { if (x && x.open) connOk = true; });
+          });
+        } catch (e1) {}
+      }
+
       d.textContent =
         "房 " + ((roomEl && roomEl.value) || "-") +
-        "  信令 " + sig +
+        "  信令 " + (P && P.open ? "on" : (P ? "连接中" : "未建")) +
         "  好友 " + (connOk ? "on" : "off") +
         "  ICE " + (pc ? pc.iceConnectionState : "-") +
         "  画面 " + (v && v.videoWidth ? v.videoWidth + "x" + v.videoHeight : "-") +
         "  t=" + (v ? (v.currentTime || 0).toFixed(1) : "-") +
         "  静音 " + (v && v.muted ? "是" : "否");
-    } catch (e10) {}
+    } catch (e2) {}
   }, 1000);
 })();
 </script>
@@ -976,7 +983,7 @@
 /* 自动更新：线上 version.json 一变，旧页面自己跳到新地址。
    守卫用 URL 里的 v 和线上版本比，避免「页面比 version.json 旧」时无限重载。 */
 (function () {
-  var BUILD = '2026-11-03-9';
+  var BUILD = '2026-11-03-10';
   var u = new URL(location.href);
   var got = u.searchParams.get('v');
   if (got === BUILD) return;
