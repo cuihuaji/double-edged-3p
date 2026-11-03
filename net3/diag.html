@@ -90,9 +90,6 @@
   var m = /[?&]room=([^&]+)/.exec(location.search);
   if (m) { try { inp.value = decodeURIComponent(m[1]).toLowerCase().trim(); } catch (e) {} }
 
-  setSecure(location.protocol === 'https:' ? 'https ✓' : location.protocol, location.protocol === 'https:' ? 'ok-v' : 'bad-v');
-  setUA(navigator.userAgent.slice(0, 78));
-
   var hasRTC = !!(window.RTCPeerConnection || window.webkitRTCPeerConnection);
   var canDC = false;
   try {
@@ -101,8 +98,15 @@
     canDC = !!pc0.createDataChannel;
     pc0.close();
   } catch (e) {}
-  setRTC(hasRTC ? ('支持 ✓' + (canDC ? ' · DataChannel ✓' : ' · DataChannel ✗')) : '不支持 ✗',
-    hasRTC && canDC ? 'ok-v' : 'bad-v');
+
+  function fillStatic() {
+    setSecure(location.protocol === 'https:' ? 'https ✓' : location.protocol,
+      location.protocol === 'https:' ? 'ok-v' : 'bad-v');
+    setUA(navigator.userAgent.slice(0, 78));
+    setRTC(hasRTC ? ('支持 ✓' + (canDC ? ' · DataChannel ✓' : ' · DataChannel ✗')) : '不支持 ✗',
+      hasRTC && canDC ? 'ok-v' : 'bad-v');
+  }
+  fillStatic();
 
   var candidates = { host: 0, srflx: 0, relay: 0 };
 
@@ -122,6 +126,8 @@
     if (!code) { verdict('先填房号', 'wait'); inp.focus(); return; }
     btn.disabled = true;
     for (var k in rows) { rows[k].textContent = '…'; rows[k].className = 'v'; }
+    /* 静态项清空后要回填，否则一直是「…」 */
+    fillStatic();
     verdict('检测中…', 'wait');
 
     if (!hasRTC || !canDC) {
