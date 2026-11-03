@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>双刃 · 手机自检</title>
+<style>
+  html, body { margin: 0; background: #080b10; color: #d7e2ee;
+    font: 14px/1.7 -apple-system, "Microsoft YaHei", system-ui, sans-serif; }
+  .wrap { padding: 14px 14px 40px; }
+  h1 { font-size: 17px; margin: 0 0 4px; letter-spacing: 1px; }
+  .sub { color: #7d8fa3; font-size: 12px; margin-bottom: 12px; }
+  .verdict { padding: 12px 14px; border-radius: 10px; font-size: 15px; font-weight: 600;
+    background: #16202b; border: 1px solid #35485c; margin-bottom: 14px; line-height: 1.5; }
+  .verdict.ok { background: #10301f; border-color: #2f6a45; color: #7ee2a8; }
+  .verdict.bad { background: #3a1a16; border-color: #7a3b2c; color: #ffa08c; }
+  .verdict.wait { background: #2b2210; border-color: #6b5320; color: #e8c56a; }
+  .row { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid #17202b; }
+  .row .k { flex: 0 0 96px; color: #7d8fa3; font-size: 12.5px; }
+  .row .v { flex: 1 1 auto; word-break: break-all; font-family: Consolas, monospace; font-size: 12.5px; }
+  .ok-v { color: #7ee2a8; } .bad-v { color: #ffa08c; } .mid-v { color: #e8c56a; }
+  input { width: 100%; box-sizing: border-box; padding: 13px; font-size: 17px; letter-spacing: 1px;
+    text-align: center; background: #16202b; border: 1px solid #35485c; border-radius: 9px;
+    color: #e8eef6; font-family: Consolas, monospace; outline: none; margin-bottom: 10px; }
+  button { width: 100%; padding: 14px; font-size: 16px; font-weight: 600; letter-spacing: 1px;
+    background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; border: 0; border-radius: 9px; }
+  button:disabled { opacity: .55; }
+  .foot { margin-top: 12px; color: #61707f; font-size: 11.5px; line-height: 1.7; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>双刃 · 手机自检</h1>
+  <div class="sub">填房主给你的房号，逐层测一遍。结论在顶部。</div>
+
+  <div id="verdict" class="verdict wait">准备中…</div>
+
+  <input id="room" placeholder="房间号（de 开头）" autocomplete="off" autocapitalize="off" spellcheck="false" />
+  <button id="go">开始自检</button>
+
+  <div id="rows" style="margin-top:14px"></div>
+
+  <div class="foot">
+    这一页只做检测，不改任何东西。测完把整屏发给对方即可。
+  </div>
+</div>
+
+<script src="peerjs.min.js"></script>
+<script>
+(function () {
+  var rowsEl = document.getElementById('rows');
+  var vEl = document.getElementById('verdict');
+  var inp = document.getElementById('room');
+  var btn = document.getElementById('go');
+  var rows = {};
+
+  function row(key, label) {
+    var d = document.createElement('div');
+    d.className = 'row';
+    var k = document.createElement('div');
+    k.className = 'k';
+    k.textContent = label;
+    var v = document.createElement('div');
+    v.className = 'v';
+    v.textContent = '…';
+    d.appendChild(k);
+    d.appendChild(v);
+    rowsEl.appendChild(d);
+    rows[key] = v;
+    return function (text, cls) {
+      v.textContent = text;
+      v.className = 'v' + (cls ? ' ' + cls : '');
+    };
+  }
+
+  function verdict(text, cls) {
+    vEl.textContent = text;
+    vEl.className = 'verdict' + (cls ? ' ' + cls : '');
+  }
+
+  var setSecure = row('secure', '安全上下文');
+  var setUA = row('ua', '浏览器');
+  var setRTC = row('rtc', 'WebRTC');
+  var setId = row('sigid', '信令接口');
+  var setWS = row('ws', '信令 WebSocket');
+  var setPeer = row('peer', '建自身 peer');
+  var setConn = row('conn', '连接房主');
+  var setIce = row('ice', 'ICE 候选');
+
+  var m = /[?&]room=([^&]+)/.exec(location.search);
+  if (m) { try { inp.value = decodeURIComponent(m[1]).toLowerCase().trim(); } catch (e) {} }
+
+  setSecure(location.protocol === 'https:' ? 'https ✓' : location.protocol, location.protocol === 'https:' ? 'ok-v' : 'bad-v');
+  setUA(navigator.userAgent.slice(0, 78));
+
+  var hasRTC = !!(window.RTCPeerConnection || window.webkitRTCPeerConnection);
+  var canDC = false;
+  try {
+    var PC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+    var pc0 = new PC({ iceServers: [] });
+    canDC = !!pc0.createDataChannel;
+    pc0.close();
+  } catch (e) {}
+  setRTC(hasRTC ? ('支持 ✓' + (canDC ? ' · DataChannel ✓' : ' · DataChannel ✗')) : '不支持 ✗',
+    hasRTC && canDC ? 'ok-v' : 'bad-v');
+
+  var candidates = { host: 0, srflx: 0, relay: 0 };
+
+  function probeIce(pc) {
+    try {
+      pc.onicecandidate = function (e) {
+        if (!e.candidate) { setIce(JSON.stringify(candidates), candidates.host ? 'mid-v' : 'bad-v'); return; }
+        var t = e.candidate.type || (/typ (\w+)/.exec(e.candidate.candidate) || [])[1];
+        if (t && candidates[t] !== undefined) candidates[t]++;
+        setIce('host ' + candidates.host + ' · srflx ' + candidates.srflx + ' · relay ' + candidates.relay + '  （采集中）');
+      };
+    } catch (e) {}
+  }
+
+  function go() {
+    var code = (inp.value || '').trim().toLowerCase().replace(/\s+/g, '');
+    if (!code) { verdict('先填房号', 'wait'); inp.focus(); return; }
+    btn.disabled = true;
+    for (var k in rows) { rows[k].textContent = '…'; rows[k].className = 'v'; }
+    verdict('检测中…', 'wait');
+
+    if (!hasRTC || !canDC) {
+      verdict('这台手机的浏览器禁用了 WebRTC，任何联机都不可能成功。请换 Chrome / Edge 打开。', 'bad');
+      btn.disabled = false;
+      return;
+    }
+
+    // 1) 信令 HTTP
+    var t0 = performance.now();
+    fetch('https://0.peerjs.com/peerjs/id?ts=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.text().then(function (b) { return { s: r.status, b: b, ms: Math.round(performance.now() - t0) }; }); })
+      .then(function (o) {
+        setId(o.s + ' · ' + o.ms + 'ms', o.s === 200 ? 'ok-v' : 'bad-v');
+      })
+      .catch(function (e) { setId('失败: ' + String(e).slice(0, 40), 'bad-v'); });
+
+    // 2) 信令 WebSocket
+    var wsT0 = performance.now();
+    var wsDone = false;
+    try {
+      var ws = new WebSocket('wss://0.peerjs.com/peerjs?key=peerjs&id=diag' + Date.now() + '&token=x&version=1.5.4');
+      ws.onopen = function () {
+        if (wsDone) return;
+        wsDone = true;
+        setWS('✓ ' + Math.round(performance.now() - wsT0) + 'ms', 'ok-v');
+        ws.close();
+      };
+      ws.onerror = function () {
+        if (wsDone) return;
+        wsDone = true;
+        setWS('失败 ✗（连不上 0.peerjs.com）', 'bad-v');
+      };
+      setTimeout(function () { if (!wsDone) { wsDone = true; setWS('超时 8s ✗', 'bad-v'); } }, 8000);
+    } catch (e) { setWS('异常: ' + String(e).slice(0, 40), 'bad-v'); }
+
+    // 3) 建一个自己的 peer
+    var peer = null;
+    var peerT0 = performance.now();
+    try {
+      peer = new Peer(null, {
+        debug: 0,
+        config: { iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:global.stun.twilio.com:3478' }
+        ] }
+      });
+    } catch (e) {
+      setPeer('构造失败: ' + String(e).slice(0, 50), 'bad-v');
+      verdict('PeerJS 构造失败', 'bad');
+      btn.disabled = false;
+      return;
+    }
+
+    var booted = false;
+    peer.on('open', function (id) {
+      booted = true;
+      setPeer('✓ ' + Math.round(performance.now() - peerT0) + 'ms · id=' + String(id).slice(0, 10), 'ok-v');
+      doConnect();
+    });
+    peer.on('error', function (e) {
+      var t = (e && e.type) || String(e);
+      if (!booted) {
+        setPeer('失败: ' + t, 'bad-v');
+        verdict('信令层失败（' + t + '）：手机连不上 0.peerjs.com。检查是否被代理/加速器/浏览器拦了。', 'bad');
+        btn.disabled = false;
+      }
+    });
+    setTimeout(function () {
+      if (!booted) {
+        setPeer('超时 12s ✗', 'bad-v');
+        verdict('12 秒还没连上信令服务器。手机到 0.peerjs.com 这条路不通。', 'bad');
+        btn.disabled = false;
+      }
+    }, 12000);
+
+    // 4) 连房主
+    function doConnect() {
+      verdict('正在连房主 ' + code + ' …', 'wait');
+      var conn = null;
+      var gotErr = null;
+      try {
+        conn = peer.connect(code, { reliable: true });
+        window.__diagConn = conn;
+      } catch (e) {
+        setConn('发起失败: ' + String(e).slice(0, 50), 'bad-v');
+        verdict('发起连接失败', 'bad');
+        btn.disabled = false;
+        return;
+      }
+
+      var cT0 = performance.now();
+      conn.on('open', function () {
+        setConn('✓ ' + Math.round(performance.now() - cT0) + 'ms · 数据通道已开', 'ok-v');
+        var pc = conn.peerConnection;
+        if (pc) probeIce(pc);
+        verdict('连上了！房号正确、数据通道已开。如果游戏还是黑的，问题在画面层（我这边修）。', 'ok');
+        btn.disabled = false;
+      });
+      conn.on('error', function (e) {
+        gotErr = (e && e.type) || String(e);
+        setConn('✗ ' + gotErr, 'bad-v');
+      });
+
+      peer.on('error', function (e) {
+        var t = (e && e.type) || String(e);
+        gotErr = t;
+        setConn('✗ ' + t, 'bad-v');
+        if (t === 'peer-unavailable') {
+          verdict('房号不存在（peer-unavailable）：房主没点「开房」，或者房号已经变了。让房主确认屏幕上现在的房号，重新抄一次。', 'bad');
+        } else if (t === 'network' || t === 'server-error') {
+          verdict('信令层失败（' + t + '）：手机到 0.peerjs.com 不稳。', 'bad');
+        } else {
+          verdict('连接失败：' + t, 'bad');
+        }
+        btn.disabled = false;
+      });
+
+      setTimeout(function () {
+        if (!conn.open && !gotErr) {
+          setConn('超时 15s（无响应）', 'bad-v');
+          verdict('15 秒没连上也没报错：多半是打洞失败（双方网络都不给直连）。', 'bad');
+          btn.disabled = false;
+        }
+      }, 15000);
+    }
+  }
+
+  btn.addEventListener('click', go);
+  inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
+  if (inp.value) setTimeout(go, 400);
+})();
+</script>
+</body>
+</html>
