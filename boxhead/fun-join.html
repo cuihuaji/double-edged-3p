@@ -85,12 +85,13 @@
   var cv = $('cv'), ctx = cv.getContext('2d');
   var hudEl = $('hud');
   var ws = null, room = '';
-  var recv = 0, bytes = 0, lastT = 0, fps = 0, lastSize = 0, firstFrame = true;
+  var recv = 0, bytes = 0, lastT = 0, fps = 0, lastSize = 0, firstFrame = true, rtt = 0;
 
   function hud(mainMsg) {
     if (mainMsg) hudEl.dataset.main = mainMsg;
     hudEl.innerHTML = (hudEl.dataset.main || '等待画面…') +
       ' ｜ <b>' + recv + '</b> 帧 ' + fps.toFixed(1) + ' fps ｜ ' +
+      (rtt ? '延迟 <b>' + rtt + 'ms</b> ｜ ' : '') +
       Math.round(lastSize / 1024 * 10) / 10 + ' KB/帧 ｜ ' + Math.round(bytes / 1024) + ' KB';
   }
 
@@ -184,11 +185,17 @@
     ws.onopen = function () {
       ws.send(JSON.stringify({ room: room, join: 1 }));
       hud('已连上，等房主推画面…');
+      /* 每 3 秒 ping 一次测延迟 */
+      setInterval(function () {
+        if (ws && ws.readyState === 1) try { ws.send(JSON.stringify({ data: { t: 'ping', ts: Date.now() } })); } catch (e) {}
+      }, 3000);
     };
     ws.onmessage = function (ev) {
       if (ev.data instanceof ArrayBuffer) { onFrame(ev.data); return; }
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
       if (m.sys === 'join') hud('已进入房间');
+      var d = m.data;
+      if (d && d.t === 'pong' && d.ts) { rtt = Date.now() - d.ts; }
     };
     ws.onclose = function () { hud('中继断开，3 秒后重连…'); setTimeout(function () { connect(room); }, 3000); };
   }

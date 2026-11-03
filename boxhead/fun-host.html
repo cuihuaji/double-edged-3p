@@ -142,6 +142,7 @@
       if (m.sys === 'join') { bar_refresh('好友已上线 ✓'); return; }
       if (m.sys === 'leave') { bar_refresh('好友已离开'); return; }
       var d = m.data;
+      if (d && d.t === 'ping' && d.ts) { sendJSON({ t: 'pong', ts: d.ts }); return; }
       if (d && d.t === 'k' && d.c) {
         keysIn++;
         if (!setRemote(d.c, !!d.d)) inject(d.d ? 'keydown' : 'keyup', d.c);
