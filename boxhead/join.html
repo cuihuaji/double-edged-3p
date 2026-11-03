@@ -56,6 +56,28 @@
     background: rgba(6,9,12,.75); cursor: pointer; }
   #tap.on { display: grid; }
   #tap div { text-align: center; color: #ffd166; font-size: 15px; }
+
+  /* ---------- 触屏虚拟手柄 ---------- */
+  #pad { position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
+    display: flex; justify-content: space-between; align-items: flex-end;
+    padding: 0 14px calc(16px + env(safe-area-inset-bottom, 0px)); pointer-events: none; }
+  #pad.hide { display: none; }
+  #pad .cluster { pointer-events: auto; }
+  #pad .dpad { display: grid; grid-template-columns: repeat(3, 58px); grid-template-rows: repeat(3, 58px); gap: 6px; }
+  #pad .acts { display: grid; grid-template-columns: 74px; gap: 10px; align-items: end; }
+  #pad button.k { width: 100%; height: 100%; border-radius: 50%;
+    border: 1px solid rgba(120,170,210,.45); background: rgba(22,32,43,.62); color: #cfe0f0;
+    font-size: 17px; font-weight: 700; display: grid; place-items: center;
+    touch-action: none; -webkit-user-select: none; user-select: none; padding: 0; }
+  #pad button.k.on { background: rgba(90,170,255,.78); color: #06121f; }
+  #pad .up { grid-area: 1 / 2; }
+  #pad .left { grid-area: 2 / 1; }
+  #pad .mid { grid-area: 2 / 2; border: 0; background: transparent; }
+  #pad .right { grid-area: 2 / 3; }
+  #pad .down { grid-area: 3 / 2; }
+  #pad .acts button.k { border-radius: 15px; width: 74px; height: 74px; font-size: 14px; }
+  #pad .fire { background: rgba(200,70,60,.58); border-color: rgba(255,140,120,.62); }
+  #pad .fire.on { background: rgba(255,120,100,.92); color: #2a0b06; }
 </style>
 </head>
 <body>
@@ -66,6 +88,7 @@
   <span id="st">未连接</span>
   <span id="lat"></span>
   <span class="sp"></span>
+  <button id="padToggle">手柄</button>
   <button id="fs">全屏</button>
   <button id="quit">退出</button>
 </div>
@@ -82,6 +105,20 @@
 </div>
 
 <div id="tap"><div>点击画面继续<br><span style="font-size:12px;color:#7b8fa3">浏览器需要一次点击才允许播放</span></div></div>
+
+<div id="pad" class="hide">
+  <div class="cluster dpad">
+    <button class="k up" data-code="ArrowUp">▲</button>
+    <button class="k left" data-code="ArrowLeft">◀</button>
+    <button class="k mid" disabled></button>
+    <button class="k right" data-code="ArrowRight">▶</button>
+    <button class="k down" data-code="ArrowDown">▼</button>
+  </div>
+  <div class="cluster acts">
+    <button class="k fire" data-code="Numpad1">射击</button>
+    <button class="k next" data-code="Numpad2">换枪</button>
+  </div>
+</div>
 
 <script src="peerjs.min.js"></script>
 <script>
@@ -338,7 +375,8 @@ addEventListener('beforeunload', () => { try { if (peer) peer.destroy(); } catch
   const el = document.createElement('div');
   el.id = 'diag';
   Object.assign(el.style, {
-    position: 'fixed', left: '10px', bottom: '10px', zIndex: '9',
+    position: 'fixed', left: '8px', top: '46px', zIndex: '9',
+    maxWidth: '94vw', fontSize: '11px', lineHeight: '1.5', whiteSpace: 'normal',
     pointerEvents: 'none', padding: '3px 8px', borderRadius: '5px',
     background: 'rgba(13,20,28,.86)', border: '1px solid #26323f',
     color: '#6f8ba3', font: '11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace',
@@ -390,7 +428,7 @@ addEventListener('beforeunload', () => { try { if (peer) peer.destroy(); } catch
     const room = roomEl ? (roomEl.textContent || roomEl.value || '-') : '-';
     el.textContent =
       '房号 ' + room +
-      '  建 2026-11-03-5' +
+      '  建 2026-11-03-7' +
       '  信令 ' + (p && p.open ? 'on' : 'off') +
       '  好友 ' + (c && c.open ? 'on' : 'off') +
       '  ICE ' + (pc ? pc.iceConnectionState : '-') +
@@ -461,7 +499,7 @@ window.__selfMap = { state: 'probing', mapped: null };
    守卫用「URL 里的 v」和「线上版本」比，不用页面里的 BUILD 比——
    否则页面代码比 version.json 旧时会自己跳自己，无限重载。 */
 (function () {
-  const BUILD = '2026-11-03-5';
+  const BUILD = '2026-11-03-7';
   const u = new URL(location.href);
   const got = u.searchParams.get('v');
   if (got === BUILD) return;
@@ -474,6 +512,66 @@ window.__selfMap = { state: 'probing', mapped: null };
       location.replace(u.toString());
     })
     .catch(() => {});
+})();
+
+/* ---------- 触屏虚拟手柄 ----------
+   走的是同一条数据通道，发的还是 {t:'k',code,down}，
+   所以服务端/房主那边完全不用改。 */
+(function () {
+  const pad = document.getElementById('pad');
+  const toggle = document.getElementById('padToggle');
+  if (!pad) return;
+  const coarse = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+
+  function show(on) {
+    if (on) pad.classList.remove('hide'); else pad.classList.add('hide');
+  }
+  const saved = localStorage.getItem('bh_pad');
+  show(saved === 'on' || (saved === null && coarse));
+
+  if (toggle) {
+    toggle.onclick = () => {
+      const willShow = pad.classList.contains('hide');
+      show(willShow);
+      localStorage.setItem('bh_pad', willShow ? 'on' : 'off');
+    };
+  }
+
+  function send(code, down) {
+    if (typeof connected === 'undefined' || !connected) return;
+    try { if (conn && conn.open) conn.send({ t: 'k', code: code, down: down }); } catch (e) {}
+  }
+
+  pad.querySelectorAll('button.k[data-code]').forEach((b) => {
+    const code = b.dataset.code;
+    let held = false;
+    const press = (e) => {
+      e.preventDefault();
+      if (held) return;
+      held = true;
+      b.classList.add('on');
+      try { if (b.setPointerCapture && e.pointerId != null) b.setPointerCapture(e.pointerId); } catch (err) {}
+      send(code, true);
+    };
+    const release = () => {
+      if (!held) return;
+      held = false;
+      b.classList.remove('on');
+      send(code, false);
+    };
+    b.addEventListener('pointerdown', press);
+    b.addEventListener('pointerup', release);
+    b.addEventListener('pointercancel', release);
+    b.addEventListener('lostpointercapture', release);
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+  });
+
+  /* 连上之后自动亮出（触屏设备），用户手动关掉过就不再自动弹 */
+  setInterval(() => {
+    if (typeof connected !== 'undefined' && connected && coarse && localStorage.getItem('bh_pad') !== 'off') {
+      if (pad.classList.contains('hide')) show(true);
+    }
+  }, 900);
 })();
 </script>
 </body>
