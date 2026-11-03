@@ -24,32 +24,36 @@
   #join button { padding: 14px 40px; font-size: 16px; font-weight: 600; border: 0; border-radius: 9px;
     background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; }
   #join .tip { color: #7d8fa3; font-size: 12.5px; text-align: center; line-height: 1.9; }
-  #pad { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
-  .btn { position: absolute; pointer-events: auto; display: flex; align-items: center; justify-content: center;
-    border-radius: 50%; background: rgba(46,62,82,.42); border: 1px solid rgba(120,160,200,.28);
-    color: #cfe4f7; font-size: 20px; font-weight: 700; }
-  .btn.hit { background: rgba(90,170,255,.62); border-color: rgba(150,210,255,.7); }
-  #bU { width: 74px; height: 74px; left: 96px; bottom: 176px; }
-  #bD { width: 74px; height: 74px; left: 96px; bottom: 28px; }
-  #bL { width: 74px; height: 74px; left: 22px; bottom: 102px; }
-  #bR { width: 74px; height: 74px; left: 170px; bottom: 102px; }
-  #bF { width: 92px; height: 92px; right: 26px; bottom: 40px; font-size: 17px;
-    background: rgba(200,70,70,.48); border-color: rgba(255,140,140,.4); }
-  #bN { width: 74px; height: 74px; right: 30px; bottom: 156px; font-size: 15px;
-    background: rgba(70,140,200,.4); }
+  #rotate { position: fixed; inset: 0; z-index: 55; background: #07090d; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #7d8fa3; }
+  @media (orientation: portrait) { #rotate { display: flex; } }
+  /* 动作键（右侧两颗大键，同双刃手机端布局） */
+  #acts { position: fixed; right: max(12px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom)); z-index: 10000; display: flex; gap: 14px;
+    align-items: flex-end; }
+  .act { width: min(17vh, 9rem); height: min(17vh, 9rem); border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 700; color: #e8f3ff; touch-action: none; user-select: none;
+    background: radial-gradient(circle at 38% 30%, rgba(70,96,124,.6), rgba(30,42,56,.55) 65%);
+    border: 1px solid rgba(120,190,255,.3); box-shadow: 0 6px 16px rgba(0,0,0,.4); }
+  .act small { font-size: 11px; font-weight: 500; color: #9db8d4; margin-top: 2px; }
+  .act.hit { background: radial-gradient(circle at 38% 30%, rgba(120,200,255,.75), rgba(50,110,170,.7) 65%);
+    border-color: rgba(170,220,255,.75); }
+  #aFire { background: radial-gradient(circle at 38% 30%, rgba(190,70,70,.6), rgba(110,32,32,.55) 65%);
+    border-color: rgba(255,140,140,.35); }
+  #aFire.hit { background: radial-gradient(circle at 38% 30%, rgba(255,120,110,.8), rgba(160,50,45,.75) 65%);
+    border-color: rgba(255,170,160,.8); }
 </style>
 </head>
 <body>
 <div id="view"><canvas id="cv" width="320" height="240"></canvas></div>
 <div id="hud">等待画面…</div>
 
-<div id="pad">
-  <div class="btn" id="bU" data-code="ArrowUp">▲</div>
-  <div class="btn" id="bD" data-code="ArrowDown">▼</div>
-  <div class="btn" id="bL" data-code="ArrowLeft">◀</div>
-  <div class="btn" id="bR" data-code="ArrowRight">▶</div>
-  <div class="btn" id="bF" data-code="Numpad1">开火</div>
-  <div class="btn" id="bN" data-code="Numpad2">换枪</div>
+<div id="rotate">📱 请横屏<br><small>摇杆和动作键在左右两侧，竖屏玩不了</small></div>
+
+<div id="acts">
+  <div class="act" id="aSwap">换枪<small>Weapon</small></div>
+  <div class="act" id="aFire">开火<small>Fire</small></div>
 </div>
 
 <div id="join">
@@ -59,6 +63,7 @@
   <div class="tip">填房主页上的 4 位房间码（bh 开头）<br>走房主自己的中继，不用装任何东西</div>
 </div>
 
+<script src="stick.js"></script>
 <script>
 (function () {
   'use strict';
@@ -103,6 +108,7 @@
     if (ws && ws.readyState === 1) try { ws.send(JSON.stringify({ data: { t: 'k', c: code, d: down ? 1 : 0 } })); } catch (e) {}
   }
 
+  /* 键盘映射（电脑上打开好友页也能玩）：方向键+小键盘1/2，数字1/2同义 */
   var KEYMAP = {
     ArrowUp: 1, ArrowDown: 1, ArrowLeft: 1, ArrowRight: 1,
     Numpad1: 1, Numpad2: 1, Digit1: 1, Digit2: 1,
@@ -118,15 +124,39 @@
     sendKey(e.code === 'Digit1' ? 'Numpad1' : e.code === 'Digit2' ? 'Numpad2' : e.code, false);
   }, { passive: false });
 
-  Array.prototype.forEach.call(document.querySelectorAll('.btn'), function (el) {
-    var code = el.dataset.code, active = false;
-    function on(e) { e.preventDefault(); if (active) return; active = true; el.classList.add('hit'); sendKey(code, true); }
-    function off(e) { e.preventDefault(); if (!active) return; active = false; el.classList.remove('hit'); sendKey(code, false); }
+  /* 虚拟摇杆（双刃手机端同款 stick.js）：派发标准 Arrow* KeyboardEvent → sendKey 接走 */
+  var arrowCodes = { ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39 };
+  addEventListener('keydown', function (e) {
+    if (arrowCodes[e.code] && !e.repeat) sendKey(e.code, true);
+  });
+  addEventListener('keyup', function (e) {
+    if (arrowCodes[e.code]) sendKey(e.code, false);
+  });
+  try {
+    window.DEStick.mount({ deadzone: 0.2 });
+  } catch (e) {}
+
+  /* 动作键：开火 Numpad1 / 换枪 Numpad2 */
+  function bindAct(id, code) {
+    var el = $(id), active = false;
+    function on(e) {
+      e.preventDefault();
+      if (active) return; active = true; el.classList.add('hit');
+      sendKey(code, true);
+      if (navigator.vibrate) try { navigator.vibrate(18); } catch (x) {}
+    }
+    function off(e) {
+      e.preventDefault();
+      if (!active) return; active = false; el.classList.remove('hit');
+      sendKey(code, false);
+    }
     el.addEventListener('pointerdown', on);
     el.addEventListener('pointerup', off);
     el.addEventListener('pointercancel', off);
     el.addEventListener('pointerleave', off);
-  });
+  }
+  bindAct('aFire', 'Numpad1');
+  bindAct('aSwap', 'Numpad2');
 
   function connect(code) {
     room = code;

@@ -35,7 +35,7 @@
   <div class="tip">
     走你电脑自己的中继（Tailscale Funnel），延迟最低、带宽不限。<br>
     <b>把房间码发给好友，好友打开「Funnel 好友」页填码加入。</b><br>
-    15 帧/秒 · 点击开始（需要一次点击才能出声）
+    24 帧/秒 · 点击开始（需要一次点击才能出声）
   </div>
   <button id="startBtn">开始游戏</button>
 </div>
@@ -54,7 +54,7 @@
       ? 'ws://' + location.host + '/ws'
       : 'wss://' + location.hostname + '/ws';
   }
-  var FPS = 15;                 /* Funnel 带宽不限，比 MQTT 版提帧率 */
+  var FPS = 24;                 /* Funnel 带宽不限，24fps 接近原版手感 */
   var SCALE = 0.85;
   var MAX_BYTES = 14000;        /* 单帧预算，自适应质量 */
   var MIME = 'image/jpeg';
@@ -182,7 +182,12 @@
       video.play().catch(function () {});
     } catch (e) { bar_refresh('captureStream 不可用'); return; }
 
-    var busy = false, lastPub = 0, minGap = Math.round(1000 / FPS) - 12;
+    /* 双缓冲编码：canvas A 采集，canvas B 编码，编码不阻塞下一帧采集 */
+    var enc = document.createElement('canvas');
+    enc.width = W; enc.height = H;
+    var encCtx = enc.getContext('2d');
+
+    var busy = false, lastPub = 0, minGap = Math.round(1000 / FPS) - 14;
     setInterval(function () {
       if (busy || !wsReady) return;
       var now = Date.now();
@@ -190,8 +195,14 @@
       if (!ctx2 || !video || video.readyState < 2) return;
       try { ctx2.drawImage(video, 0, 0, W, H); } catch (e) { return; }
       lastPub = now; busy = true;
-      c2.toBlob(function (blob) {
-        if (!blob) { busy = false; return; }
+      /* 把采集帧拷到编码画布后立刻解锁采集，编码异步进行 */
+      encCtx.drawImage(c2, 0, 0);
+      busy = false;
+      if (enc._inflight) return;          // 上一帧编码还没完就丢弃这帧（不堆积）
+      enc._inflight = true;
+      enc.toBlob(function (blob) {
+        enc._inflight = false;
+        if (!blob) return;
         blob.arrayBuffer().then(function (buf) {
           var bytes = new Uint8Array(buf);
           if (wsReady) try { ws.send(bytes); } catch (e) {}
@@ -201,10 +212,10 @@
             var avg = sizes.reduce(function (a, b) { return a + b; }, 0) / sizes.length;
             sizes = [];
             if (avg > MAX_BYTES && q > 0.3) q = Math.max(0.3, q - 0.04);
-            else if (avg < MAX_BYTES * 0.7 && q < 0.7) q = Math.min(0.7, q + 0.03);
+            else if (avg < MAX_BYTES * 0.7 && q < 0.72) q = Math.min(0.72, q + 0.03);
           }
           bar_refresh();
-        }).catch(function () {}).then(function () { busy = false; });
+        }).catch(function () {});
       }, MIME, q);
     }, Math.round(1000 / FPS / 2));
   }
@@ -249,6 +260,14 @@
   addEventListener('keydown', forwardKey, true);
   addEventListener('keyup', forwardKey, true);
   addEventListener('pointerdown', function () { if (player) player.focus({ preventScroll: true }); }, true);
+
+  /* 房主页只给电脑用：检测到触屏设备（没有精确指针）提示换设备 */
+  if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches) {
+    document.body.innerHTML = '<div style="display:flex;height:100vh;align-items:center;justify-content:center;' +
+      'flex-direction:column;gap:10px;color:#8fa3b8;font-size:15px;text-align:center;padding:20px">' +
+      '<div style="font-size:34px">🖥️</div><b style="color:#d7e2ee">这一页是电脑（房主）用的</b>' +
+      '手机请打开「Funnel 好友」页：fun-join.html</div>';
+  }
   setInterval(function () { bar_refresh(); }, 1000);
 })();
 </script>
