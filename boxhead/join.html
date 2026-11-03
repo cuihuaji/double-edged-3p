@@ -384,12 +384,13 @@ addEventListener('beforeunload', () => { try { if (peer) peer.destroy(); } catch
     const room = roomEl ? (roomEl.textContent || roomEl.value || '-') : '-';
     el.textContent =
       '房号 ' + room +
-      '  建 2026-11-03-2' +
+      '  建 2026-11-03-3' +
       '  信令 ' + (p && p.open ? 'on' : 'off') +
       '  好友 ' + (c && c.open ? 'on' : 'off') +
       '  ICE ' + (pc ? pc.iceConnectionState : '-') +
       '  本地候选 ' + fmt(seen.L) +
-      '  对方候选 ' + fmt(remote);
+      '  对方候选 ' + fmt(remote) +
+      '  自身映射 ' + (window.__selfMap.state === 'probing' ? '…' : (window.__selfMap.mapped ? '√ ' + window.__selfMap.mapped : '无'));
   }, 1000);
 })();
 
@@ -397,7 +398,7 @@ addEventListener('beforeunload', () => { try { if (peer) peer.destroy(); } catch
    页面里写死 BUILD；线上 version.json 一旦更新，旧页面自己跳到带 ?v= 的新地址。
    目的是不让「好友那边还是旧缓存」这种事再发生。 */
 (function () {
-  const BUILD = '2026-11-03-2';
+  const BUILD = '2026-11-03-3';
   const u = new URL(location.href);
   if (u.searchParams.get('v') === BUILD) return;
   fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
@@ -428,6 +429,38 @@ function ensureTurn() {
     .catch(() => null);
   return __turnPromise;
 }
+
+/* ---------- 开机自检：这页自己能不能拿到公网映射（srflx）----------
+   不需要任何人连进来。拿不到就说明本机 UDP/STUN 出不去，
+   这种情况下对方再健康也连不上。 */
+window.__selfMap = { state: 'probing', mapped: null };
+(function () {
+  let pc;
+  try {
+    pc = new RTCPeerConnection({ iceServers: PEER_OPTS.config.iceServers });
+  } catch (e) { window.__selfMap = { state: 'error', mapped: null, err: String(e) }; return; }
+  let done = false;
+  const fin = () => {
+    if (done) return;
+    done = true;
+    try { pc.close(); } catch (e) {}
+    if (window.__selfMap.state === 'probing') window.__selfMap.state = 'none';
+  };
+  pc.onicecandidate = (e) => {
+    if (!e.candidate) return;
+    const c = e.candidate;
+    const t = (c.candidate.match(/ typ (\w+)/) || [])[1];
+    if (t === 'srflx' && !window.__selfMap.mapped) {
+      window.__selfMap = { state: 'ok', mapped: (c.address || '') + ':' + (c.port || '') };
+      fin();
+    }
+  };
+  try {
+    pc.createDataChannel('selfprobe');
+    pc.createOffer().then((o) => pc.setLocalDescription(o)).catch(fin);
+  } catch (e) { fin(); }
+  setTimeout(fin, 6000);
+})();
 </script>
 </body>
 </html>
