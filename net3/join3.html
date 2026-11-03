@@ -293,7 +293,23 @@
           }, 3000);
           window.__npRxTimer = statsTimer;
         } catch (e5) {}
-        v.onclick = () => v.play();
+        /* 之前为了绕过自动播放限制把 v 钉成 muted，但从来没解开 → 好友端一直没有声音。
+           现在点一下画面就解锁声音并续播。 */
+        v.onclick = () => {
+          try { v.muted = false; v.removeAttribute("muted"); } catch (e) {}
+          v.play().catch(() => {});
+        };
+        try {
+          const snd = document.createElement("div");
+          snd.id = "snd-hint";
+          snd.textContent = "点击画面开声音";
+          snd.style.cssText = "position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:20;" +
+            "padding:8px 16px;border-radius:20px;background:rgba(10,14,19,.82);border:1px solid #33475c;" +
+            "color:#ffd166;font:13px/1 system-ui,sans-serif;pointer-events:none;transition:opacity .3s";
+          document.body.appendChild(snd);
+          v.addEventListener("click", () => { snd.style.opacity = "0"; setTimeout(() => snd.remove(), 400); }, { once: true });
+          setTimeout(() => { if (snd.style.opacity !== "0") snd.style.opacity = "0.45"; }, 6000);
+        } catch (e) {}
         const hint = document.getElementById("room-hint");
         if (hint) hint.textContent = "已接入房主画面（远程同乐）。你的键鼠实时传给房主，菜单由房主操作。";
       });
