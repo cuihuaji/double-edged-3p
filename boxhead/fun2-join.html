@@ -50,6 +50,10 @@
   #panel button:hover { background: #23303f; }
   .hint { margin-top: 8px; font-size: 11px; color: #61707f; line-height: 1.5; }
   code { color: #8ab4d8; }
+  details.alt { margin-top: 10px; font-size: 11px; color: #61707f; }
+  details.alt summary { cursor: pointer; padding: 4px 0; }
+  details.alt input { margin-top: 6px; }
+  details.alt button { margin-top: 6px; }
   #rotate { position: fixed; inset: 0; z-index: 55; background: #07090d; display: none;
     flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #7d8fa3; }
   @media (orientation: portrait) { #rotate { display: flex; } }
@@ -91,6 +95,10 @@
   <input class="room" id="room" placeholder="输入房间号" autocomplete="off" spellcheck="false">
   <button id="go">加入</button>
   <div class="hint">向房主要房间号（bh 开头）。<br>键盘：<code>←↑↓→</code> 移动 · <code>1</code> 开火 · <code>2</code> 换枪</div>
+  <details class="alt"><summary>高级：中继连不上时换线路</summary>
+    <input class="room" id="relayIn" placeholder="wss://中继地址/ws" autocomplete="off" spellcheck="false" style="font-size:13px;letter-spacing:0;text-align:left;padding:8px">
+    <button id="btnRelay">用这个中继重连</button>
+  </details>
 </div>
 
 <script src="stick.js"></script>
@@ -123,10 +131,11 @@
 
   function sendJSON(obj) { if (wsReady) try { ws.send(JSON.stringify({ data: obj })); } catch (e) {} }
 
-  function connect(code) {
+  function connect(code, relayOverride) {
     room = code;
+    if (relayOverride) RELAY = relayOverride;
     ws = new WebSocket(RELAY);
-    hud('连接中继…');
+    hud('连接中继… ' + RELAY.slice(0, 40));
     ws.onopen = function () {
       wsReady = true;
       ws.send(JSON.stringify({ room: room, join: 1 }));
@@ -235,6 +244,13 @@
     if (rot) rot.style.display = 'none';
   }
 
+  $('btnRelay').addEventListener('click', function () {
+    var r = ($('relayIn').value || '').trim();
+    if (r.indexOf('ws') !== 0) { return; }
+    if (ws) try { ws.onclose = null; ws.close(); } catch (e) {}
+    pc = null;
+    connect(room || ($('room').value || '').trim().toLowerCase(), r);
+  });
   $('go').addEventListener('click', function () {
     var v = ($('room').value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
     if (v.length < 3) { $('v-peer').textContent = '房间码太短'; $('v-peer').className = 'v bad'; return; }
