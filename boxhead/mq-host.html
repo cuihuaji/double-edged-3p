@@ -51,8 +51,10 @@
   var SWF = 'boxhead2play_cn.swf';
   var MASTER_VOLUME = 0.7;
   var BROKER = 'wss://broker.emqx.io:8084/mqtt';
-  var FPS = 8;
-  var MAX_BYTES = 11000;
+  var FPS = 7;                 /* 帧率：公共 broker 上 7 帧/秒是稳的 */
+  var SCALE = 0.85;            /* 送出去之前缩一点，画面还是清楚的 */
+  var MAX_BYTES = 9500;        /* 单帧字节预算，自适应质量围绕这个值调 */
+  var MIME = 'image/jpeg';
 
   var $ = function (id) { return document.getElementById(id); };
   var barEl = $('bar');
@@ -161,16 +163,24 @@
     if (mainMsg !== undefined) extra = mainMsg;
     bar('房号 <b>' + room + '</b> ｜ 已发 <b>' + framesSent + '</b> 帧 / ' +
         Math.round(bytesSent / 1024) + ' KB ｜ 收到按键 <b>' + keysIn + '</b> ｜ 质量 ' +
-        q.toFixed(2) + ' ｜ ' + extra);
+        q.toFixed(2) + ' ' + MIME.split('/')[1] + ' ' + (c2 ? c2.width + 'x' + c2.height : '-') + ' ｜ ' + extra);
   }
 
   /* ---------- 画面采集 + 推帧 ---------- */
   function startCapture() {
     if (!canvas) return;
-    var W = canvas.width, H = canvas.height;
+    var W = Math.round(canvas.width * SCALE);
+    var H = Math.round(canvas.height * SCALE);
     c2 = document.createElement('canvas');
     c2.width = W; c2.height = H;
     ctx2 = c2.getContext('2d');
+
+    /* WebP 比 JPEG 小 30% 左右；不支持就退回 JPEG */
+    try {
+      var probe = document.createElement('canvas');
+      probe.width = probe.height = 1;
+      if (probe.toDataURL('image/webp').indexOf('data:image/webp') === 0) MIME = 'image/webp';
+    } catch (e) {}
 
     try {
       var stream = canvas.captureStream(FPS);
@@ -184,28 +194,38 @@
       return;
     }
 
+    var busy = false;
+    var lastPub = 0;
+    var minGap = Math.round(1000 / FPS) - 12;
+    window.__capInfo = '';
+
     setInterval(function () {
+      if (busy) return;
+      var now = Date.now();
+      if (now - lastPub < minGap) return;          /* 硬闸：绝不超帧 */
       if (!mq || !window.__mqReady || !ctx2 || !video || video.readyState < 2) return;
       try { ctx2.drawImage(video, 0, 0, W, H); } catch (e) { return; }
+      lastPub = now;
+      busy = true;
 
       c2.toBlob(function (blob) {
-        if (!blob) return;
+        if (!blob) { busy = false; return; }
         blob.arrayBuffer().then(function (buf) {
           var bytes = new Uint8Array(buf);
           mq.publish(topic + '/v', bytes);
           framesSent++;
           bytesSent += bytes.length;
           sizes.push(bytes.length);
-          if (sizes.length >= 8) {
+          if (sizes.length >= 6) {
             var avg = sizes.reduce(function (a, b) { return a + b; }, 0) / sizes.length;
             sizes = [];
-            if (avg > MAX_BYTES && q > 0.2) q = Math.max(0.2, q - 0.05);
-            else if (avg < MAX_BYTES * 0.55 && q < 0.6) q = Math.min(0.6, q + 0.03);
+            if (avg > MAX_BYTES && q > 0.22) q = Math.max(0.22, q - 0.04);
+            else if (avg < MAX_BYTES * 0.7 && q < 0.7) q = Math.min(0.7, q + 0.03);
           }
           bar_refresh();
-        });
-      }, 'image/jpeg', q);
-    }, Math.round(1000 / FPS));
+        }).catch(function () {}).then(function () { busy = false; });
+      }, MIME, q);
+    }, Math.round(1000 / FPS / 2));
   }
 
   /* ---------- 启动 ---------- */

@@ -85,7 +85,10 @@
 
   /* ---------- 收帧渲染 ---------- */
   function onFrame(bytesArr) {
-    var blob = new Blob([bytesArr], { type: 'image/jpeg' });
+    var mime = (bytesArr[0] === 0x52 && bytesArr[1] === 0x49) ? 'image/webp'   /* RIFF */
+             : (bytesArr[0] === 0xFF && bytesArr[1] === 0xD8) ? 'image/jpeg'
+             : 'image/jpeg';
+    var blob = new Blob([bytesArr], { type: mime });
     lastPayloadSize = bytesArr.length;
     bytes += bytesArr.length;
     createImageBitmap(blob).then(function (bmp) {
