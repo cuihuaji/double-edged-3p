@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>我的出口 IP</title>
+<style>
+  html, body { margin: 0; background: #080b10; color: #d7e2ee;
+    font: 15px/1.7 -apple-system, "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-user-select: text; user-select: text; }
+  .wrap { padding: 26px 18px 40px; text-align: center; }
+  h1 { font-size: 17px; margin: 0 0 6px; letter-spacing: 1px; }
+  .sub { color: #7d8fa3; font-size: 12.5px; margin-bottom: 22px; }
+  .ip { font-family: Consolas, monospace; font-size: 34px; letter-spacing: 1px;
+    color: #6fd3ff; padding: 18px 10px; background: #101822; border: 1px solid #24354a;
+    border-radius: 12px; word-break: break-all; }
+  .ip.wait { color: #8fa3b8; font-size: 20px; }
+  .meta { margin-top: 16px; color: #7d8fa3; font-size: 12.5px; line-height: 1.9; }
+  .meta b { color: #ffd166; }
+  .hint { margin-top: 22px; padding: 14px; border-radius: 10px; background: #16202b;
+    border: 1px solid #2a3a4d; color: #9fb2c6; font-size: 12.5px; line-height: 1.85; text-align: left; }
+  .hint b { color: #e8eef6; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>我的出口 IP</h1>
+  <div class="sub">两台设备这串数字完全一样 → 在同一个 NAT 后面，直连必失败</div>
+
+  <div class="ip wait" id="ip">检测中…</div>
+  <div class="meta" id="meta"></div>
+
+  <div class="hint">
+    <b>怎么用</b><br>
+    1. 你打开这个页面，记下这串数字<br>
+    2. 让朋友也打开同一个网址，记下他那串<br>
+    3. <b>完全一样</b> → 你们在同一个出口，打洞不可能成功，必须走中继（TURN）<br>
+    4. <b>不一样</b> → 不同出口，能打洞，直接开房就能连
+  </div>
+</div>
+
+<script>
+(function () {
+  var el = document.getElementById('ip');
+  var meta = document.getElementById('meta');
+  var found = {};
+  var done = false;
+
+  function show() {
+    var keys = Object.keys(found);
+    if (!keys.length) return;
+    done = true;
+    el.className = 'ip';
+    el.textContent = keys[0];
+    meta.innerHTML = keys.length > 1
+      ? '这个网络共暴露 ' + keys.length + ' 个公网映射：<br>' + keys.join(' · ')
+      : '（只探到一个映射）';
+  }
+
+  try {
+    var pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.cloudflare.com:3478' },
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:global.stun.twilio.com:3478' }
+      ]
+    });
+    pc.createDataChannel('x');
+    pc.onicecandidate = function (e) {
+      if (!e.candidate) { show(); return; }
+      var c = e.candidate;
+      var t = c.type || (/ typ (\w+)/.exec(c.candidate) || [])[1];
+      if (t === 'srflx' || t === 'relay') {
+        if (c.address) found[c.address] = 1;
+        show();
+      }
+    };
+    pc.createOffer().then(function (o) { return pc.setLocalDescription(o); });
+    setTimeout(function () {
+      if (!done && !Object.keys(found).length) {
+        el.textContent = '探不到（这个网络挡了 STUN）';
+        meta.textContent = '这本身也是个结论：连 STUN 都不通，打洞更不可能。';
+      }
+    }, 8000);
+  } catch (e) {
+    el.textContent = '浏览器不支持 WebRTC';
+  }
+})();
+</script>
+</body>
+</html>
