@@ -63,7 +63,12 @@
 (function () {
   'use strict';
   var RELAY = /[?&]relay=([^&]+)/.exec(location.search);
-  RELAY = RELAY ? decodeURIComponent(RELAY[1]) : 'wss://desktop-a9unfi5.tailb30fe3.ts.net/ws';
+  RELAY = RELAY ? decodeURIComponent(RELAY[1]) : null;
+  if (!RELAY) {
+    RELAY = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
+      ? 'ws://' + location.host + '/ws'
+      : 'wss://' + location.hostname + '/ws';
+  }
 
   var $ = function (id) { return document.getElementById(id); };
   var cv = $('cv'), ctx = cv.getContext('2d');
@@ -95,7 +100,7 @@
   }
 
   function sendKey(code, down) {
-    if (ws && ws.readyState === 1) try { ws.send(JSON.stringify({ t: 'k', c: code, d: down ? 1 : 0 })); } catch (e) {}
+    if (ws && ws.readyState === 1) try { ws.send(JSON.stringify({ data: { t: 'k', c: code, d: down ? 1 : 0 } })); } catch (e) {}
   }
 
   var KEYMAP = {

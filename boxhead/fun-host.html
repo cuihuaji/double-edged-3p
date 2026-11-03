@@ -46,9 +46,14 @@
   'use strict';
   var SWF = 'boxhead2play_cn.swf';
   var MASTER_VOLUME = 0.7;
-  /* 中继地址：优先同源（本机直连），否则走 Funnel 公网地址 */
+  /* 中继地址：优先 ?relay= 覆盖；本机打开直连本地；否则走 Funnel 公网 */
   var RELAY = /[?&]relay=([^&]+)/.exec(location.search);
-  RELAY = RELAY ? decodeURIComponent(RELAY[1]) : 'wss://desktop-a9unfi5.tailb30fe3.ts.net/ws';
+  RELAY = RELAY ? decodeURIComponent(RELAY[1]) : null;
+  if (!RELAY) {
+    RELAY = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
+      ? 'ws://' + location.host + '/ws'
+      : 'wss://' + location.hostname + '/ws';
+  }
   var FPS = 15;                 /* Funnel 带宽不限，比 MQTT 版提帧率 */
   var SCALE = 0.85;
   var MAX_BYTES = 14000;        /* 单帧预算，自适应质量 */
