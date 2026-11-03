@@ -68,6 +68,8 @@
 
 /* 晓之车汉化版：菜单/武器名/HUD 都是中文。原版是英文矢量图，改不了文字，只能换包体。 */
 const SWF = 'boxhead2play_cn.swf';
+/* 全局音量：音效资源是原版的，只在这里统一压低，改这个数就行 */
+const MASTER_VOLUME = 0.55;
 
 const PEER_OPTS = {
   debug: 0,
@@ -123,6 +125,8 @@ function inject(type, code) {
   const kc = KEYCODE[code];
   if (kc === undefined) return;
 
+  window.__lastInject = { type, code, kc, at: Date.now() };
+
   /* Ruffle 只在元素有焦点时处理键盘，不聚焦的话事件会被静默丢掉 */
   if (document.activeElement !== player) player.focus({ preventScroll: true });
 
@@ -131,6 +135,9 @@ function inject(type, code) {
     bubbles: true, cancelable: true, composed: true,
   }));
 }
+/* 暴露出来便于在控制台/自动化里验证好友按键链路 */
+window.__inject = inject;
+window.__lastInject = null;
 
 /* ---------- 画面质量 ----------
    WebRTC 带宽估紧时会自己降分辨率，好友看到的是一张缩小再放大的糊图。
@@ -185,6 +192,26 @@ function startPeer() {
 }
 
 function bindData(c) {
+  /* 好友按键到达时右下角闪一下，用来判断「是没收到」还是「收到了但游戏没反应」 */
+  let keyBadge = null;
+  function flashKey(code, down) {
+    if (!keyBadge) {
+      keyBadge = document.createElement('div');
+      Object.assign(keyBadge.style, {
+        position: 'fixed', right: '12px', bottom: '48px', zIndex: '9',
+        pointerEvents: 'none', padding: '4px 9px', borderRadius: '6px',
+        background: '#151d27', border: '1px solid #2f3d4f', color: '#8fd0ff',
+        font: '12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace',
+        transition: 'opacity .25s',
+      });
+      document.body.appendChild(keyBadge);
+    }
+    keyBadge.textContent = (down ? '好友按下 ' : '好友松开 ') + code;
+    keyBadge.style.opacity = '1';
+    clearTimeout(keyBadge._t);
+    keyBadge._t = setTimeout(() => { keyBadge.style.opacity = '0.3'; }, 1200);
+  }
+
   c.on('open', () => {
     setState('好友已连接', 'on');
     startVideo(c.peer);
@@ -193,6 +220,7 @@ function bindData(c) {
   c.on('data', (d) => {
     if (!d || typeof d !== 'object') return;
     if (d.t === 'k') {
+      flashKey(d.code, d.down);
       inject(d.down ? 'keydown' : 'keyup', d.code);
     } else if (d.t === 'ping') {
       try { c.send({ t: 'pong', at: d.at }); } catch (e) {}
@@ -242,10 +270,12 @@ async function boot() {
   setState('加载原版…', 'warn');
 
   try {
-    /* Ruffle 的缩放模式是全局配置，必须在 createPlayer 之前设 */
+    /* Ruffle 的缩放模式是全局配置，必须在 createPlayer 之前设。
+       volume 用运行时全局音量压整体响度，音效资源保持原版不动。 */
     window.RufflePlayer.config = Object.assign({}, window.RufflePlayer.config, {
       letterbox: 'off',
       quality: 'high',
+      volume: MASTER_VOLUME,
     });
 
     const ruffle = window.RufflePlayer.newest();
@@ -280,6 +310,9 @@ async function boot() {
     if (!canvas) { setState('找不到画布', 'err'); return; }
 
     try { await p.play(); } catch (e) {}
+    /* 兜底：config.volume 在这个 nightly 上不生效，用 volume 属性赋值
+       （原型上有 setter，实测 1 -> 0.55 生效）。 */
+    try { p.volume = MASTER_VOLUME; } catch (e) {}
     fitStage();
     setState('准备就绪', 'warn');
 
