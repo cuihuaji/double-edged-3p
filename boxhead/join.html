@@ -9,9 +9,17 @@
   html, body { margin: 0; height: 100%; background: #0d0f13; color: #e8eef6; overflow: hidden;
     font: 13px/1.5 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
 
-  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
-  #rv { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+  /* 好友端画面不再是铺满整屏，跟房主那边一样是 960x720 的窗口，
+     窗口更小的时候按 4:3 等比缩，不拉伸也不裁切。 */
+  #stage { position: fixed; inset: 0; display: grid; place-items: center; background: #000; }
   #stage.hide { display: none; }
+  #frame {
+    width: min(960px, 100vw, calc(100vh * 4 / 3));
+    aspect-ratio: 4 / 3;
+    background: #000;
+    box-shadow: 0 0 0 1px #1e2b38;
+  }
+  #rv { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
 
   #bar { position: fixed; top: 0; left: 0; right: 0; height: 38px; z-index: 20;
     display: flex; align-items: center; gap: 12px; padding: 0 12px; font-size: 12px;
@@ -52,7 +60,7 @@
 </head>
 <body>
 
-<div id="stage" class="hide"><video id="rv" autoplay playsinline muted></video></div>
+<div id="stage" class="hide"><div id="frame"><video id="rv" autoplay playsinline muted></video></div></div>
 
 <div id="bar" class="idle">
   <span id="st">未连接</span>
