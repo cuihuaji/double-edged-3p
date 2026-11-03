@@ -535,12 +535,30 @@ addEventListener('beforeunload', () => {
     const room = roomEl ? (roomEl.textContent || roomEl.value || '-') : '-';
     el.textContent =
       '房号 ' + room +
+      '  建 2026-11-03-1' +
       '  信令 ' + (p && p.open ? 'on' : 'off') +
       '  好友 ' + (c && c.open ? 'on' : 'off') +
       '  ICE ' + (pc ? pc.iceConnectionState : '-') +
       '  本地候选 ' + fmt(seen.L) +
       '  对方候选 ' + fmt(remote);
   }, 1000);
+})();
+
+/* ---------- 自动更新 ----------
+   页面里写死 BUILD；线上 version.json 一旦更新，旧页面自己跳到带 ?v= 的新地址。
+   目的是不让「好友那边还是旧缓存」这种事再发生。 */
+(function () {
+  const BUILD = '2026-11-03-1';
+  const u = new URL(location.href);
+  if (u.searchParams.get('v') === BUILD) return;
+  fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+    .then((r) => r.json())
+    .then((j) => {
+      if (!j || !j.v || j.v === BUILD) return;
+      u.searchParams.set('v', j.v);
+      location.replace(u.toString());
+    })
+    .catch(() => {});
 })();
 </script>
 </body>
