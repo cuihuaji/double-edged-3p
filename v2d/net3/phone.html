@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<link rel="icon" href="data:," />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<title>Double Edged · 加入</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; height: 100dvh; background: #07090c; overflow: hidden;
+    font: 13px/1.6 "Microsoft YaHei", system-ui, sans-serif; color: #cfd6df;
+    /* 整页禁掉浏览器手势：不禁的话两指会被当成捏合缩放，浏览器直接 touchcancel 掉其中一根 */
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent; }
+
+  #wrap { position: absolute; inset: 0; }
+  /* 固定 880x640：AVM 按 iframe 内部视口决定画布像素和舞台比例，
+     两端视口一样大，命中判定用的包围盒才会一样。
+     外层用 transform 放大显示，缩放不影响内部视口。 */
+  #game {
+    position: absolute; left: 50%; top: 50%;
+    width: 880px; height: 640px; border: 0; display: block;
+    pointer-events: none; transform-origin: center center;
+    transform: translate(-50%, -50%);
+  }
+
+  #panel {
+    position: absolute; top: 14px; right: 14px; width: 330px; padding: 14px 16px;
+    background: rgba(14, 18, 24, .94); border: 1px solid #232a34; border-radius: 10px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.6); z-index: 20;
+  }
+  #panel h1 { font-size: 14px; font-weight: 600; color: #e8eef5; margin-bottom: 10px; }
+  /* 面板收起：只留右上角一个小把手，不挡画面 */
+  #panel h1 { display: flex; align-items: center; justify-content: space-between; }
+  #collapse {
+    width: auto; margin: 0; padding: 2px 8px; font-size: 11px; line-height: 1.4;
+    background: #1b2430; color: #9fb0c2; border: 1px solid #2c3846; border-radius: 6px; cursor: pointer;
+  }
+  #panel.min { width: auto; padding: 6px; border-radius: 8px; }
+  #panel.min > *:not(#handle) { display: none !important; }
+  #handle {
+    display: none; cursor: pointer; font-size: 12px; color: #9fb0c2;
+    padding: 4px 10px; user-select: none;
+  }
+  #panel.min #handle { display: block; }
+
+  .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; }
+  .k { color: #7c8794; }
+  .v { color: #cfd6df; font-variant-numeric: tabular-nums; }
+  .ok { color: #5fd08a; } .bad { color: #e0705a; }
+
+  input.room {
+    width: 100%; margin-top: 10px; padding: 10px; text-align: center; letter-spacing: 3px;
+    font: 600 20px/1.2 Consolas, monospace; color: #9fd4ff;
+    background: #0b0f14; border: 1px dashed #2c3846; border-radius: 8px; outline: none;
+  }
+  textarea {
+    width: 100%; height: 60px; margin-top: 8px; padding: 6px 8px; resize: none;
+    background: #0b0f14; color: #9fb0c2; border: 1px solid #232a34; border-radius: 6px;
+    font: 11px/1.4 Consolas, monospace; word-break: break-all;
+  }
+  button {
+    width: 100%; margin-top: 8px; padding: 8px; cursor: pointer;
+    background: #1b2430; color: #d6e2ef; border: 1px solid #2c3846; border-radius: 6px; font-size: 13px;
+  }
+  button:hover { background: #23303f; }
+  button:disabled { opacity: .45; cursor: default; }
+  details.alt { margin-top: 10px; font-size: 11px; color: #61707f; }
+  details.alt summary { cursor: pointer; padding: 4px 0; }
+  .hint { margin-top: 8px; font-size: 11px; color: #61707f; line-height: 1.5; }
+  code { color: #8ab4d8; }
+</style>
+</head>
+<body>
+<div id="wrap"><iframe id="game" allow="autoplay; fullscreen"></iframe><video id="rv" autoplay playsinline style="display:none;position:absolute;left:0;top:0;width:100%;height:100%;object-fit:contain;background:#000;z-index:5;image-rendering:pixelated;image-rendering:-moz-crisp-edges;image-rendering:crisp-edges"></video></div>
+
+<div id="panel">
+  <h1>双人联机 · 好友（P2）</h1>
+  <div class="row"><span class="k">游戏</span><span class="v" id="v-game">载入中…</span></div>
+  <div class="row"><span class="k">对端</span><span class="v" id="v-peer">未连接</span></div>
+  <div class="row"><span class="k">帧号</span><span class="v" id="v-frame">0</span></div>
+  <div class="row"><span class="k">帧率</span><span class="v" id="v-fps">0 fps</span></div>
+  <div class="row"><span class="k">往返</span><span class="v" id="v-rtt">-- ms</span></div>
+  <div class="row"><span class="k">一致性</span><span class="v" id="v-sync">—</span></div>
+  <div class="row"><span class="k">画布</span><span class="v" id="v-canvas">—</span></div>
+  <div class="row"><span class="k">输入延迟</span><span class="v" id="v-delay">—</span></div>
+
+  <input class="room" id="room" placeholder="输入房间号" autocomplete="off" spellcheck="false" />
+  <button id="btn-room">加入</button>
+  <div class="hint" id="room-hint">向房主要房间号，1 人加入即可开局。</div>
+
+  <details class="alt">
+    <summary>备用：手动连接码（信令连不上时用）</summary>
+    <textarea id="offer" placeholder="把房主发来的邀请码（O.xxx）粘到这里"></textarea>
+    <button id="btn-join">接收邀请 · 生成回应码</button>
+    <textarea id="answer" readonly placeholder="把这串回应码发回给房主"></textarea>
+  </details>
+
+  <div class="hint">
+    第二人：<code>←↑↓→</code> 移动 · <code>N</code> 攻击 · <code>M</code> 跳
+  </div>
+</div>
+
+<script src="../net2/common.js"></script>
+<script src="peerjs.min.js"></script>
+<script src="diag.js?v=3"></script>
+<script src="subs.js?v=10"></script>
+<link rel="stylesheet" href="vendor/ruffle-touch.css">
+  <script src="vendor/ruffle-touch.js"></script>
+<script src="fsm.js?v=1"></script>
+<script src="stick.js?v=1"></script>
+<script src="lock.js?v=8"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  const iframe = $("game");
+
+  let lock = null;
+  let peer = null;
+
+  // 信令走 PeerJS 公网云（wss://0.peerjs.com:443），不再依赖房主本机的 PeerServer。
+  // 这样页面挂到任何公网地址（https 隧道也好、别的托管也好）好友都能发房号、能连。
+  const PEER_OPTS = {
+    debug: 0,
+    config: {
+      iceServers: [
+        { urls: "stun:stun.l.google.com:19302" },
+        { urls: "stun:stun1.l.google.com:19302" },
+        { urls: "stun:global.stun.twilio.com:3478" }
+      ]
+    }
+  };
+
+  /* 用种子启动游戏 */
+  function startGame(seed) {
+    if (lock) { try { lock.stop(); } catch (e) {} }
+    /* 手机是纯手柄页：不加载游戏副本。
+     * 原来会先跑一整份 AwayFL（没连上就一直跑），手机上白烧 CPU 和电；画面只认房主推来的视频。 */
+    try { iframe.src = "about:blank"; } catch (e) {}
+    iframe.style.display = "none";
+    lock = new Lock({
+      side: "p2", seed: seed >>> 0, frame: iframe,
+      log: (m) => console.log("[lock]", m),
+      diag: (c, m, d, s) => window.__diag && window.__diag.report(c, m, d, s)
+    });
+    /* 远程同乐（nolock）：好友不参与锁步。桩掉起跑/发送/闸门——
+     * 房主端等不到好友 rd，play3p 保持 ready 自转，全程自由跑不冻结。 */
+    lock._maybeStart = function () {};
+    lock._startPacing = function () {};
+    lock._sendOwn = function () {};
+    lock._send = function () {};
+    lock.attachTransport = function (t) { lock.transport = t; };
+    window.__np.lock = lock;
+    return lock;
+  }
+
+  /* 让 iframe 显示尺寸跟随窗口，但内部视口恒为 880x640 */
+  function fitIframe() {
+    const k = Math.min(window.innerWidth / 880, window.innerHeight / 640);
+    iframe.style.transform = "translate(-50%, -50%) scale(" + Math.max(0.3, k) + ")";
+  }
+  window.addEventListener("resize", fitIframe);
+  fitIframe();
+
+  /* ---------- 状态面板 ---------- */
+  setInterval(() => {
+    if (!lock) return;
+    const L = lock.L;
+    $("v-game").textContent = L ? (L.started ? "就绪" : "载入中") : "载入中";
+    $("v-game").className = "v" + (L && L.started ? " ok" : "");
+    const open = !!lock.transport || !!(lock.dc && lock.dc.readyState === "open");
+    $("v-peer").textContent = open ? (lock.started ? "已连接 · 锁步中" : "已连接") : "未连接";
+    $("v-peer").className = "v" + (open ? " ok" : "");
+    $("v-frame").textContent = lock.next;
+    $("v-fps").textContent = lock.stats.fps + " fps";
+    $("v-rtt").textContent = (lock.stats.rtt || "--") + " ms";
+    $("v-sync").textContent = lock.desync
+      ? ("偏离 " + lock.desync + " 次" + (lock.desyncKind ? "（" + lock.desyncKind + "）" : ""))
+      : "一致";
+    $("v-sync").className = "v " + (lock.desync ? "bad" : "ok");
+    $("v-canvas").textContent = lock.canvasSize();
+    $("v-delay").textContent = Math.round(lock.delay / 30 * 1000) + " ms";
+  }, 300);
+
+  /* ---------- PeerJS：短房号 ---------- */
+  function bindConn(conn) {
+    const adapter = {
+      _q: [],
+      send: (o) => { if (conn.open) { try { conn.send(o); } catch (e) {} } else adapter._q.push(o); },
+      ready: conn.open
+    };
+    lock.attachTransport(adapter);
+    conn.on("open", () => { adapter.ready = true; const q = adapter._q.splice(0); q.forEach((o) => { try { conn.send(o); } catch (e) {} }); adapter.onopen && adapter.onopen(); });
+    conn.on("data", (d) => adapter.onmessage && adapter.onmessage(d));
+    /* 房主推来的中文字幕（好友端画面是英文，字幕在本地 HTML 上画） */
+    conn.on("data", (d) => { if (d && d.sys === "sub" && window.DE_bar) window.DE_bar(d.t, 7000); });
+    conn.on("close", () => { adapter.ready = false; adapter.onclose && adapter.onclose(); });
+    conn.on("error", (e) => window.__diag && window.__diag.report("dc", "PeerJS 连接出错",
+      String((e && e.type) || e), "err"));
+    if (conn.open) setTimeout(() => { adapter.ready = true; adapter.onopen && adapter.onopen(); }, 0);
+  }
+
+  $("btn-room").addEventListener("click", () => {
+    let id = $("room").value.trim().toLowerCase().replace(/\s+/g, "");
+    if (!id) return;
+    if (!/^de/.test(id)) id = "de" + id;
+
+    let seed = 0;
+    try { seed = parseInt(id.slice(2), 36) >>> 0; } catch (e) { seed = 0; }
+    if (!seed) {
+      $("room-hint").textContent = "房间号格式不对，应为 de 开头的一串字符。";
+      return;
+    }
+
+    $("btn-room").disabled = true;
+    $("btn-room").textContent = "连接中…";
+    startGame(seed);
+
+    let tries = 0;
+    function tryConnect() {
+      const conn = peer.connect(id, { reliable: true });
+      bindConn(conn);
+    }
+
+    peer = new Peer(null, PEER_OPTS);
+    peer.on("open", tryConnect);
+    /* ---- 远程同乐：接收房主视频流 + 把本机输入转发给房主 ---- */
+    peer.on("call", (call) => {
+      window.__npCall = call;   /* 暴露给 frz.js 取接收端统计 */
+      call.on("stream", (remote) => {
+        const v = document.getElementById("rv");
+        v.srcObject = remote;
+        v.style.display = "block";
+        try { document.getElementById("game").src = "about:blank"; } catch (e) {}   // 远程同乐：好友本地不跑游戏副本
+        // 彻底停掉好友端锁步引擎（play3p 已死，lock 节拍器还在空转报警 + 房主会等它的帧导致冻结）
+        try {
+          const L = window.__np && window.__np.lock;
+          if (L) { L.stop(); L.started = false; L._pumpOnce = function () { return false; }; L._send = function () {}; L._sendOwn = function () {}; }
+        } catch (e2) {}
+        /* 像素画不要用双线性插值放大：整幅画面会被插成一团糊。
+         * pixelated 让放大后的每个像素保持方块边界，接近点对点。 */
+        try {
+          v.style.imageRendering = "pixelated";
+          const tint = document.createElement("style");
+          tint.textContent = "#rv{image-rendering:pixelated!important;}";
+          document.head.appendChild(tint);
+        } catch (e3) {}
+        /* 自动播放：这条流没有音轨，但 Chrome 仍可能按「非静音」把 play() 拒掉，
+         * 表现是好友端一片黑、统计里 decoded 一直涨而 currentTime 停在 0.00。
+         * muted 之后 Chrome 允许自动播放；再定时补一次防首次竞态。 */
+        try { v.muted = true; v.setAttribute("muted", ""); } catch (e6) {}
+        v.play().catch(() => {});
+        try {
+          const kick = setInterval(() => {
+            if (v.paused && v.readyState >= 2) v.play().catch(() => {});
+            if (!v.paused && v.currentTime > 0) clearInterval(kick);
+          }, 700);
+          setTimeout(() => clearInterval(kick), 25000);
+        } catch (e7) {}
+        /* 面板里显示对端真实画质：收到多少像素、多少码率 */
+        try {
+          const statsTimer = setInterval(async () => {
+            try {
+              const pc = call.peerConnection;
+              if (!pc) return;
+              const rep = await pc.getStats();
+              let vin = null, cin = null;
+              rep.forEach((r) => {
+                if (r.type === "inbound-rtp" && r.kind === "video") vin = r;
+                if (r.type === "candidate-pair" && r.state === "succeeded") cin = r;
+              });
+              const el = document.getElementById("v-canvas");
+              if (el && vin) {
+                const kb = vin.bytesReceived ? Math.round(vin.bytesReceived * 8 / 1000 / Math.max(1, (performance.now() - (vin.timestamp || 1)) / 1000)) : 0;
+                el.textContent = (vin.frameWidth || "?") + "×" + (vin.frameHeight || "?") + " · " + (kb > 0 ? kb + "kbps" : "") +
+                  (vin.framesDecoded ? " · 解码" + vin.framesDecoded : "");
+              }
+              window.__npQualityRx = vin ? { w: vin.frameWidth, h: vin.frameHeight, fps: vin.framesPerSecond,
+                decoded: vin.framesDecoded, dropped: vin.framesDropped,
+                kbps: vin.bytesReceived ? Math.round(vin.bytesReceived * 8 / 1000 / Math.max(1, (performance.now() - (vin.timestamp || 1)) / 1000)) : 0 } : null;
+            } catch (e4) {}
+          }, 3000);
+          window.__npRxTimer = statsTimer;
+        } catch (e5) {}
+        v.onclick = () => v.play();
+        const hint = document.getElementById("room-hint");
+        if (hint) hint.textContent = "已接入房主画面（远程同乐）。你的键鼠实时传给房主，菜单由房主操作。";
+      });
+      call.answer();
+    });
+
+    function fwdInput(e) {
+      if (!peer || !peer.open) return;
+      const all = peer.connections || {};
+      let conn = null;
+      for (const k in all) { if (all[k] && all[k][0] && all[k][0].open) { conn = all[k][0]; break; } }
+      if (!conn) return;
+      if (e.type.indexOf("key") === 0) {
+        conn.send({ evt: e.type, key: e.key, code: e.code, keyCode: e.keyCode });
+      } else {
+        conn.send({ evt: e.type, x: e.clientX, y: e.clientY, button: e.button, buttons: e.buttons });
+      }
+    }
+    /* 手柄要发报文时统一走这里（连接建立前返回 false，按键直接丢弃） */
+    window.__deSend = function (o) {
+      const all = (peer && peer.connections) || {};
+      for (const k in all) {
+        const c = all[k] && all[k][0];
+        if (c && c.open) { try { c.send(o); return true; } catch (err2) {} }
+      }
+      return false;
+    };
+    document.addEventListener("keydown", fwdInput, true);
+    document.addEventListener("keyup", fwdInput, true);
+    document.addEventListener("mousedown", fwdInput, true);
+    document.addEventListener("mouseup", fwdInput, true);
+    document.addEventListener("mousemove", fwdInput, true);
+    peer.on("error", (e) => {
+      const t = (e && e.type) || String(e);
+      // 房主还没开房 / 刚刷新：自动重试，最多等 40 秒
+      if (t === "peer-unavailable" && tries < 20) {
+        tries++;
+        $("room-hint").textContent = "房主还没开房，正在等…（第 " + tries + " 次）";
+        setTimeout(tryConnect, 2000);
+        return;
+      }
+      $("btn-room").disabled = false;
+      $("btn-room").textContent = "重试";
+      $("room-hint").textContent = "连接失败：" + t + "（可展开下面的手动连接码）";
+      if (window.__diag) window.__diag.report("dc", "PeerJS 加入失败", t, "err");
+    });
+  });
+
+  /* ---------- 备用：手动连接码 ---------- */
+  async function joinByCode(fullCode) {
+    const parts = fullCode.trim().split(".");
+    if (parts.length < 3 || parts[0] !== "O") throw new Error("邀请码格式不对");
+    const seed = parseInt(parts[1], 36) >>> 0;
+    startGame(seed);
+    const answer = await lock.acceptOffer(parts.slice(2).join("."));
+    return "A." + seed.toString(36) + "." + answer;
+  }
+
+  $("btn-join").addEventListener("click", async () => {
+    const v = $("offer").value.trim();
+    if (!v) return;
+    $("btn-join").disabled = true;
+    $("btn-join").textContent = "正在收集候选地址…";
+    try {
+      $("answer").value = await joinByCode(v);
+      $("btn-join").textContent = "请把回应码发回给房主";
+    } catch (e) {
+      $("btn-join").disabled = false;
+      $("btn-join").textContent = "失败：" + e.message;
+    }
+  });
+
+  window.__np = {
+    lock: null,
+    join: joinByCode,
+    get lockObj() { return lock; }
+  };
+})();
+
+  /* ---------- 面板收起 / 展开 ---------- */
+  (function panelToggle() {
+    const panel = document.getElementById("panel");
+    if (!panel) return;
+    const h1 = panel.querySelector("h1");
+    const btn = document.createElement("button");
+    btn.id = "collapse";
+    btn.textContent = "收起";
+    h1.appendChild(btn);
+
+    const handle = document.createElement("div");
+    handle.id = "handle";
+    handle.textContent = "☰ 面板";
+    panel.insertBefore(handle, panel.firstChild);
+
+    function setMin(min) {
+      panel.classList.toggle("min", min);
+      try { localStorage.setItem("de_panel_min", min ? "1" : "0"); } catch (e) {}
+    }
+    btn.addEventListener("click", (e) => { e.stopPropagation(); setMin(true); });
+    handle.addEventListener("click", () => setMin(false));
+    try { if (localStorage.getItem("de_panel_min") === "1") setMin(true); } catch (e) {}
+
+    // 快捷键 ` （反引号）切换
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "Backquote") { e.preventDefault(); setMin(!panel.classList.contains("min")); }
+    });
+  })();
+
+  /* ---------- 中文对照卡（F1） ---------- */
+  (function zhCard() {
+    const box = document.createElement("div");
+    box.id = "zhcard";
+    box.innerHTML = ''
+      + '<h2>菜单文字对照（游戏本体是嵌入字体，无法直接改成中文）</h2>'
+      + '<table>'
+      + '<tr><td class="e">PLAY</td><td>开始游戏</td></tr>'
+      + '<tr><td class="e">1 PLAYER / 2 PLAYERS</td><td>单人 / 双人</td></tr>'
+      + '<tr><td class="e">MAP（地图上闪光的 PLAY）</td><td>关卡选择，点它进关</td></tr>'
+      + '<tr><td class="e">HELP / CREDITS</td><td>操作说明 / 制作名单</td></tr>'
+      + '<tr><td class="e">REDEFINE KEYS</td><td>自定义按键</td></tr>'
+      + '<tr><td class="e">P1：←↑↓→ · N · M</td><td>移动 · 攻击/对话 · 跳跃</td></tr>'
+      + '<tr><td class="e">P2：WASD · G · H</td><td>移动 · 攻击/对话 · 跳跃</td></tr>'
+      + '</table>'
+      + '<div class="tip">F1 开关 · 按 ` 收起右上角面板 · 游戏内对话是英文，暂无中文</div>';
+    document.body.appendChild(box);
+
+    const st = document.createElement("style");
+    st.textContent = "  /* 中文对照卡（F1 开关） */\n  #zhcard {\n    position: absolute; left: 50%; bottom: 24px; transform: translateX(-50%);\n    display: none; z-index: 30; width: min(620px, 92vw);\n    background: rgba(10, 14, 19, .95); border: 1px solid #2c3846; border-radius: 10px;\n    padding: 14px 18px; box-shadow: 0 18px 50px rgba(0,0,0,.65);\n    font-size: 12px; line-height: 1.9; color: #cfd6df;\n  }\n  #zhcard h2 { font-size: 13px; color: #e8eef5; margin-bottom: 6px; font-weight: 600; }\n  #zhcard table { width: 100%; border-collapse: collapse; }\n  #zhcard td { padding: 1px 0; vertical-align: top; }\n  #zhcard td.e { color: #9fd4ff; width: 46%; font-family: Consolas, monospace; }\n  #zhcard .tip { margin-top: 8px; color: #6f7d8c; font-size: 11px; }\n";
+    document.head.appendChild(st);
+
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "F1") {
+        e.preventDefault();
+        const on = box.style.display === "block";
+        box.style.display = on ? "none" : "block";
+      }
+    });
+  })();
+
+  /* ---------- 中文字幕条 ---------- */
+  (function subtitles() {
+    const bar = document.createElement("div");
+    bar.id = "subs";
+    bar.innerHTML = '<div class="cn"></div><div class="en"></div>';
+    document.body.appendChild(bar);
+
+    const st = document.createElement("style");
+    st.textContent = [
+      "#subs{position:absolute;left:50%;bottom:5vh;transform:translateX(-50%);",
+      "max-width:min(760px,88vw);display:none;z-index:25;text-align:center;",
+      "padding:10px 22px;border-radius:12px;background:rgba(8,11,15,.82);",
+      "border:1px solid rgba(120,140,160,.25);box-shadow:0 10px 30px rgba(0,0,0,.55);",
+      "backdrop-filter:blur(3px);pointer-events:none;}",
+      "#subs .cn{font-size:19px;line-height:1.55;color:#f2f6fa;letter-spacing:.5px;",
+      "text-shadow:0 2px 6px rgba(0,0,0,.8);}",
+      "#subs .en{font-size:11px;line-height:1.5;color:#7f8d9c;margin-top:5px;",
+      "font-family:Consolas,monospace;letter-spacing:.2px;}"
+    ].join("");
+    document.head.appendChild(st);
+
+    let last = "";
+    let lastAt = 0;
+
+    async function poll() {
+      try {
+        const d = await fetch("/api/say").then((r) => r.json());
+        const raw = d && d.t;
+        if (!raw) return;
+        if (raw !== last) {
+          last = raw;
+          lastAt = Date.now();
+          const zh = window.DE_LOOKUP ? window.DE_LOOKUP(raw) : "";
+          const cn = bar.querySelector(".cn");
+          const en = bar.querySelector(".en");
+          if (zh) {
+            cn.textContent = zh;
+            en.textContent = raw.replace(/<br\s*\/?>/gi, " · ").replace(/\^/g, " · ");
+            bar.style.display = "block";
+          } else {
+            // 没有译文的句子就原样显示，避免"吞字幕"
+            cn.textContent = "";
+            en.textContent = window.DE_NORM ? window.DE_NORM(raw).toLowerCase() : raw;
+            bar.style.display = "block";
+          }
+        } else if (Date.now() - lastAt > 7000) {
+          bar.style.display = "none";   // 句子该消失了
+        }
+      } catch (e) {}
+    }
+    setInterval(poll, 300);
+  })();
+</script>
+<script src="frz.js?v=9"></script>
+<script>
+/* ===== 手机手柄：ruffle-touch（M5Devs）现成的虚拟手柄 =====
+ * 8 向 D-pad：手指在十字区里按角度同时给两个方向，能斜跳斜砍；
+ * 动作键映射到本作 P2 的真实键位 N(攻击)/M(跳)。库把按键派发成真实
+ * KeyboardEvent 到 window，这里接住转成报文发给房主。
+ * 页面一打开就挂上，连上房主之前按键直接丢弃，不会报错。 */
+(function () {
+  var P2 = { ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, KeyN: 78, KeyM: 77 };
+  function send(o) { return window.__deSend ? window.__deSend(o) : false; }
+  window.addEventListener("keydown", function (e) {
+    if (P2[e.code]) send({ evt: "keydown", code: e.code, keyCode: P2[e.code], key: "" });
+  }, true);
+  window.addEventListener("keyup", function (e) {
+    if (P2[e.code]) send({ evt: "keyup", code: e.code, keyCode: P2[e.code], key: "" });
+  }, true);
+
+  function boot() {
+    if (!window.RuffleTouch || window.__dePad) return;
+    var pad = new window.RuffleTouch({ container: document.body });
+    pad.settings.mappingPreset = "custom";
+    pad.settings.customMappings = {
+      up:    { key: "ArrowUp",    code: "ArrowUp",    keyCode: 38, label: "▲" },
+      down:  { key: "ArrowDown",  code: "ArrowDown",  keyCode: 40, label: "▼" },
+      left:  { key: "ArrowLeft",  code: "ArrowLeft",  keyCode: 37, label: "◀" },
+      right: { key: "ArrowRight", code: "ArrowRight", keyCode: 39, label: "▶" },
+      z:     { key: "n", code: "KeyN", keyCode: 78, label: "攻" },
+      x:     { key: "m", code: "KeyM", keyCode: 77, label: "跳" },
+      space: { key: "n", code: "KeyN", keyCode: 78, label: "攻" },
+      enter: { key: "m", code: "KeyM", keyCode: 77, label: "跳" }
+    };
+    pad.keyDefinitions = pad.getEffectiveMappings();
+    pad.saveSettings();
+    pad.updateButtonLabels();
+    try {
+      if (pad.openSwfBtn) pad.openSwfBtn.style.display = "none";
+      if (pad.downloadBtn) pad.downloadBtn.style.display = "none";
+    } catch (e) {}
+    var st = document.createElement("style");
+    st.textContent = [
+      ".action-space,.action-enter{display:none !important}",
+      /* 视频铺满：dvh 才跟得上 iOS 工具栏收起/展开，vh 会多出一截 */
+      "#rv{position:fixed !important;left:0 !important;top:0 !important;width:100vw !important;" +
+        "height:100vh !important;height:100dvh !important;object-fit:contain !important;background:#000}",
+      /* 按下别抖那么狠（库默认 scale(0.94)） */
+      ".ruffle-touch-btn:active{transform:scale(.975) !important}",
+      /* ---- 横屏：手柄尺寸改按视口高度算，别把 4:3 画面挤没了 ---- */
+      "@media (orientation:landscape){",
+        ".ruffle-touch-overlay{padding:max(6px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right))",
+          " max(6px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left)) !important}",
+        ".ruffle-touch-dpad{width:min(38vh,19vw) !important;height:min(38vh,19vw) !important}",
+        ".ruffle-touch-dpad .dpad-btn{font-size:min(3.4vh,18px) !important}",
+        /* 攻/跳竖着错开：官方 Touchy 是跳在上、攻在下（DOM 里 攻 在前，所以用 column-reverse） */
+        ".ruffle-touch-actions .action-group{flex-direction:column-reverse !important;align-items:flex-end !important;",
+          "gap:min(2.4vh,12px) !important}",
+        ".action-z,.action-x{width:min(21vh,11vw) !important;height:min(21vh,11vw) !important;",
+          "font-size:min(3.6vh,20px) !important}",
+        ".action-x{margin-right:min(9vh,5vw) !important}",
+        "#de-status{top:max(6px,env(safe-area-inset-top)) !important;font-size:11px !important;padding:3px 9px !important}",
+        "#de-rotate{display:none !important}",
+      "}",
+      /* ---- 竖屏：别把画面顶掉，给个转屏提示 ---- */
+      "@media (orientation:portrait){",
+        "#de-rotate{display:flex !important}",
+        ".ruffle-touch-dpad{width:min(26vh,32vw) !important;height:min(26vh,32vw) !important}",
+        ".action-z,.action-x{width:min(14vh,19vw) !important;height:min(14vh,19vw) !important}",
+      "}"
+    ].join("");
+    document.head.appendChild(st);
+    /* 空白处轻点 = 菜单点击：换算成画面 0..1 坐标，房主端按比例点下去 */
+    document.addEventListener("pointerup", function (e) {
+      var el = e.target;
+      if (el && el.closest && el.closest("button, input, .ruffle-touch-dpad, .ruffle-touch-actions, .ruffle-touch-toolbar, .ruffle-touch-drawer")) return;
+      var v = document.getElementById("rv");
+      if (!v || !v.getBoundingClientRect().width) return;
+      var r = v.getBoundingClientRect(), A = 880 / 640;
+      var w = r.width, h = r.height, l = r.left, t = r.top;
+      if (w / h > A) { var w2 = h * A; l += (w - w2) / 2; w = w2; }
+      else { var h2 = w / A; t += (h - h2) / 2; h = h2; }
+      var fx = (e.clientX - l) / w, fy = (e.clientY - t) / h;
+      if (fx >= 0 && fx <= 1 && fy >= 0 && fy <= 1) send({ sys: "tap", fx: fx, fy: fy });
+    }, { passive: true });
+    /* 震动调小：库默认 navigator.vibrate(20)，手机上像整机弹一下；改成 8ms 的轻点 */
+    pad.triggerHaptic = function () {
+      if (this.settings && this.settings.haptic === false) return;
+      try { if (navigator.vibrate) navigator.vibrate(8); } catch (e) {}
+    };
+
+    /* 全屏 + 尝试锁横屏（Android Chrome 有效；iOS 不支持锁方向，静默跳过） */
+    var fsBtn = document.createElement("button");
+    fsBtn.id = "de-fs";
+    fsBtn.type = "button";
+    fsBtn.textContent = "⛶";
+    fsBtn.title = "全屏并锁定横屏";
+    /* 虚拟摇杆：好友端方向键是 P2 的方向键，走同一条转发通道 */
+    if (window.DEStick) window.DEStick.mount({
+      deadzone: 0.22,
+      keys: {
+        up:    { key: "ArrowUp",    code: "ArrowUp",    keyCode: 38 },
+        down:  { key: "ArrowDown",  code: "ArrowDown",  keyCode: 40 },
+        left:  { key: "ArrowLeft",  code: "ArrowLeft",  keyCode: 37 },
+        right: { key: "ArrowRight", code: "ArrowRight", keyCode: 39 }
+      }
+    });
+    if (window.DEFs) window.DEFs.attach(fsBtn);
+
+    document.body.appendChild(fsBtn);
+
+    var rot = document.createElement("div");
+    rot.id = "de-rotate";
+    rot.textContent = "把手机横过来 ↻ 画面更大";
+    document.body.appendChild(rot);
+
+    /* ?metrics=1：把各控件矩形回传给父页，用来在任意尺寸下核对布局（比如横屏适配） */
+    if (/[?&]metrics=1/.test(location.search)) {
+      setInterval(function () {
+        var rc = function (s) {
+          var e = document.querySelector(s);
+          if (!e) return null;
+          var b = e.getBoundingClientRect();
+          return [Math.round(b.left), Math.round(b.top), Math.round(b.right), Math.round(b.bottom)];
+        };
+        try {
+          var box = document.getElementById("de-metrics");
+          if (!box) {
+            box = document.createElement("pre");
+            box.id = "de-metrics";
+            box.style.cssText = "position:fixed;left:0;top:0;z-index:10009;margin:0;padding:6px 8px;" +
+              "background:rgba(0,0,0,.82);color:#8ef;font:10px/1.35 Consolas,monospace;pointer-events:none;white-space:pre";
+            document.body.appendChild(box);
+          }
+          var fmt = function (n, o) { return n + "=" + (o ? o.join(",") : "null"); };
+          box.textContent = "vp " + innerWidth + "x" + innerHeight + "\\n" +
+            fmt("dpad", rc(".ruffle-touch-dpad")) + "\\n" + fmt("攻", rc(".action-z")) + "  " + fmt("跳", rc(".action-x")) + "\\n" +
+            fmt("状态", rc("#de-status")) + "\\nrotate=" + (function () { var e = document.getElementById("de-rotate"); return e ? getComputedStyle(e).display : "absent"; })() +
+            " scrollH=" + document.documentElement.scrollHeight;
+        } catch (e0) {}
+        try {
+          parent.postMessage({
+            deMetrics: 1,
+            vp: [innerWidth, innerHeight],
+            dpad: rc(".ruffle-touch-dpad"),
+            az: rc(".action-z"),
+            ax: rc(".action-x"),
+            status: rc("#de-status"),
+            rotate: (function () { var e = document.getElementById("de-rotate"); return e ? getComputedStyle(e).display : "absent"; })(),
+            scrollH: document.documentElement.scrollHeight,
+            haptic: String(pad.triggerHaptic).replace(/\s+/g, " ").slice(0, 70)
+          }, "*");
+        } catch (e) {}
+      }, 400);
+    }
+
+    window.__dePad = pad;
+    document.body.classList.add("de-touch");
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot, { once: true });
+  else boot();
+})();
+</script>
+<style>
+  /* 手机页不要桌面那套调试叠层：左下角的监视条正好压在 ▼ 上 */
+  #frz, #diag-root { display: none !important; }
+  /* 桌面侧栏（房号/连接码/参数）在手机页会挡住画面和手柄，整块摘掉；
+     连不上时下面的手机会话层会把房号卡片重新弹出来重试。 */
+  #panel { display: none !important; }
+  #de-status { position: fixed; left: 50%; top: max(8px, env(safe-area-inset-top)); transform: translateX(-50%);
+    z-index: 10001; padding: 5px 12px; border-radius: 999px; background: rgba(8,12,18,.72);
+    color: #dfe8f2; font: 12px/1.3 'Microsoft YaHei', system-ui, sans-serif; white-space: nowrap;
+    border: 1px solid rgba(120,190,255,.35); pointer-events: none; transition: background .2s linear; }
+  #de-status.ok { background: rgba(24,72,40,.82); border-color: rgba(120,230,160,.5); }
+  #de-fs { position: fixed; left: max(8px, env(safe-area-inset-left)); top: max(8px, env(safe-area-inset-top));
+    z-index: 10001; width: 38px; height: 38px; border-radius: 50%; border: 1px solid rgba(120,190,255,.35);
+    background: rgba(8,12,18,.72); color: #dfe8f2; font-size: 17px; line-height: 1; padding: 0; }
+  #de-fs:active { transform: scale(.96); }
+  #de-rotate { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); display: none;
+    z-index: 10001; padding: 7px 14px; border-radius: 999px; background: rgba(8,12,18,.78);
+    color: #dfe8f2; font: 12.5px/1.4 'Microsoft YaHei', system-ui, sans-serif; white-space: nowrap;
+    border: 1px solid rgba(120,190,255,.3); pointer-events: none; }
+</style>
+<div id="de-status">未连接</div>
+<script>
+  /* 顶部状态条：直接镜像页面自己的提示文字，不另造一套连接逻辑 */
+  (function () {
+    var pill = document.getElementById("de-status");
+    var hint = document.getElementById("room-hint");
+    /* 页面自己的提示是整句话，塞不进顶部小条，压成短状态 */
+    function short(txt) {
+      if (/已接入|已连接/.test(txt)) return "已接入房主画面 · P2 手柄";
+      if (/还没开房|正在等|等待/.test(txt)) return "等待房主开房…";
+      if (/连接中/.test(txt)) return "连接中…";
+      if (/房间号/.test(txt)) return "输入房间号连接";
+      return txt.length > 18 ? txt.slice(0, 16) + "…" : txt;
+    }
+    function set(txt, ok) {
+      if (!pill || !txt) return;
+      pill.textContent = short(txt);
+      pill.className = ok ? "ok" : "";
+      /* 连不上/连断了就把房号卡片弹回来，直接重试（#panel 在手机页已摘掉） */
+      if (/失败|断开|重试/.test(txt)) {
+        var ov = document.getElementById("de-join");
+        var inp = document.getElementById("de-join-input");
+        var r = document.getElementById("room");
+        if (ov && ov.className === "hide") ov.className = "";
+        if (inp && !inp.value && r) inp.value = r.value;
+        var b = document.getElementById("de-join-btn");
+        if (b) b.textContent = "重试";
+      }
+    }
+    if (hint) {
+      set(hint.textContent, false);
+      new MutationObserver(function () { set(hint.textContent, /已接入|已连接/.test(hint.textContent)); })
+        .observe(hint, { childList: true, characterData: true, subtree: true });
+    }
+    setInterval(function () {
+      var v = document.getElementById("rv");
+      if (v && v.currentTime > 0) set("已接入房主画面 · P2 手柄", true);
+    }, 1200);
+  })();
+</script>
+<style>
+  #de-join { position: fixed; inset: 0; z-index: 10002; display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at 50% 35%, #16222f 0%, #080b10 75%);
+    font-family: "Microsoft YaHei", system-ui, sans-serif; padding: 18px; }
+  #de-join.hide { display: none; }
+  #de-join .card { width: 100%; max-width: 420px; text-align: center; }
+  #de-join .t { color: #e8eef6; font-size: 20px; font-weight: 600; letter-spacing: 2px; }
+  #de-join .s { color: #8fa3b8; font-size: 12.5px; line-height: 1.8; margin: 10px 0 18px; }
+  #de-join input { width: 100%; padding: 15px 14px; font-size: 18px; letter-spacing: 2px; text-align: center;
+    background: #16202b; border: 1px solid #35485c; border-radius: 10px; color: #e8eef6;
+    font-family: Consolas, monospace; outline: none; }
+  #de-join input:focus { border-color: #6fd3ff; }
+  #de-join button { width: 100%; margin-top: 12px; padding: 15px; font-size: 17px; font-weight: 600; letter-spacing: 2px;
+    background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; border: 0; border-radius: 10px; }
+  #de-join .h { margin-top: 14px; color: #7b8fa3; font-size: 12px; line-height: 1.8; }
+</style>
+<div id="de-join">
+  <div class="card">
+    <div class="t">绝地双刃 · 手机手柄</div>
+    <div class="s">向房主要房间号（de 开头）。加入后手机当 P2，画面同步显示。</div>
+    <input id="de-join-input" placeholder="房间号" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <button id="de-join-btn">加入房间</button>
+    <div class="h">左手方向 · 右手 攻 / 跳 · 同按＝必杀</div>
+  </div>
+</div>
+<script>
+  /* 手机页自己也能收房号：带 ?room= 直接进，不带就出这个框 */
+  (function () {
+    var ov = document.getElementById("de-join");
+    var inp = document.getElementById("de-join-input");
+    var btn = document.getElementById("de-join-btn");
+    function join(code) {
+      var r = document.getElementById("room"), b = document.getElementById("btn-room");
+      if (!r || !b) return false;
+      r.value = code;
+      b.click();
+      ov.className = "hide";
+      return true;
+    }
+    function submit() {
+      var c = (inp.value || "").trim().toLowerCase().replace(/\s+/g, "");
+      if (!c) { inp.focus(); return; }
+      if (!/^de/.test(c)) { inp.style.borderColor = "#e2725b"; inp.focus(); return; }
+      join(c);
+    }
+    if (btn) btn.addEventListener("click", submit);
+    if (inp) {
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") submit(); });
+      inp.addEventListener("input", function () { inp.style.borderColor = "#35485c"; });
+    }
+    var m = /[?&]room=([^&]+)/.exec(location.search);
+    if (m) { try { join(decodeURIComponent(m[1])); } catch (e) {} }
+    else setTimeout(function () { if (inp) inp.focus(); }, 300);
+  })();
+</script>
+<script>
+/* ------------------------------------------------------------------
+ * 攻 / 跳（双指同按 = 必杀）
+ *
+ * 1) 命中判定用事件自带的 target：每个 Touch 有自己的 target，Pointer 事件也有，
+ *    不再靠 clientX/Y 换算坐标（缩放、滚动、DPR 一变就错）。
+ * 2) 监听一律 passive、不 preventDefault：在 touchstart 里 preventDefault 会打断
+ *    随后到来的多点触摸序列（第二根手指直接收不到），这是之前双指失效的直接原因。
+ * 3) 每个键维护「持有者集合」：每根手指、每个指针各算一个持有者，全走了才松键。
+ * 4) 轻点保底 MIN_HOLD 毫秒，保证主控端 30fps 采样能轮到。
+ * ------------------------------------------------------------------ */
+(function () {
+  var BTN_OF  = { "KeyN": ".action-z", "KeyM": ".action-x" };
+  var KEYCODE = { "KeyN": 78, "KeyM": 77 };
+  var KEYCHR  = { "KeyN": "n", "KeyM": "m" };
+  var MIN_HOLD = 90;
+
+  var holders = { KeyN: {}, KeyM: {} };
+  var down = { KeyN: false, KeyM: false };
+  var pressAt = { KeyN: 0, KeyM: 0 };
+  var pendingUp = { KeyN: null, KeyM: null };
+  var touchCode = {}, ptrCode = {};
+  var pad = null;
+
+  /* ?pad-dbg=1 时左下角显示触摸/按键流水，手机上出问题直接截图就能定位 */
+  var DBG = /[?&]pad-dbg=1/.test(location.search);
+  var dbgBox = null, dbgLines = [];
+  function dbg(s) {
+    if (!DBG) return;
+    dbgLines.push(s);
+    if (dbgLines.length > 8) dbgLines.shift();
+    if (!dbgBox) {
+      dbgBox = document.createElement("pre");
+      dbgBox.style.cssText = "position:fixed;left:0;bottom:0;z-index:10020;margin:0;padding:4px 6px;" +
+        "background:rgba(0,0,0,.8);color:#7fe;font:10px/1.35 Consolas,monospace;pointer-events:none;white-space:pre";
+      document.body.appendChild(dbgBox);
+    }
+    dbgBox.textContent = dbgLines.join("\n");
+  }
+
+  function codeOfEl(el) {
+    while (el && el.classList) {
+      if (el.classList.contains("action-z")) return "KeyN";
+      if (el.classList.contains("action-x")) return "KeyM";
+      el = el.parentElement;
+    }
+    return null;
+  }
+  function codeAtPoint(x, y) { return codeOfEl(document.elementFromPoint(x, y)); }
+
+  function emit(code, on) {
+    var ev;
+    try {
+      ev = new KeyboardEvent(on ? "keydown" : "keyup", {
+        key: KEYCHR[code], code: code, keyCode: KEYCODE[code], which: KEYCODE[code],
+        bubbles: true, cancelable: true
+      });
+    } catch (e) {
+      ev = document.createEvent("Event");
+      ev.initEvent(on ? "keydown" : "keyup", true, true);
+      ev.code = code; ev.keyCode = KEYCODE[code]; ev.which = KEYCODE[code]; ev.key = KEYCHR[code];
+    }
+    window.dispatchEvent(ev);
+    var el = document.querySelector(BTN_OF[code]);
+    if (el) el.classList.toggle("active", on);
+    dbg((on ? "keydown " : "keyup ") + code);
+  }
+
+  function applyCode(code) {
+    var want = false;
+    for (var k in holders[code]) { want = true; break; }
+
+    if (want) {
+      if (pendingUp[code]) { clearTimeout(pendingUp[code]); pendingUp[code] = null; }
+      if (down[code]) return;
+      down[code] = true;
+      pressAt[code] = (window.performance || Date).now();
+      emit(code, true);
+      if (pad && pad.triggerHaptic) { try { pad.triggerHaptic(); } catch (e) {} }
+      return;
+    }
+
+    if (!down[code]) return;
+    down[code] = false;
+    var held = (window.performance || Date).now() - pressAt[code];
+    var wait = MIN_HOLD - held;
+    if (wait > 0) {
+      pendingUp[code] = setTimeout(function () {
+        pendingUp[code] = null;
+        for (var k2 in holders[code]) { return; }
+        emit(code, false);
+      }, wait);
+    } else {
+      emit(code, false);
+    }
+  }
+
+  function hold(id, code) { dbg("hold " + id + " " + code); holders[code][id] = 1; applyCode(code); }
+  function drop(id, code) { if (holders[code][id]) { dbg("drop " + id + " " + code); delete holders[code][id]; applyCode(code); } }
+
+  function onTouch(e) {
+    var i, t, id, code, ch, all;
+    if (e.type === "touchstart") {
+      ch = e.changedTouches || [];
+      for (i = 0; i < ch.length; i++) {
+        t = ch[i]; id = "t" + t.identifier;
+        code = codeOfEl(t.target) || codeAtPoint(t.clientX, t.clientY);
+        dbg("touchstart " + id + " -> " + (code || "none"));
+        if (code && touchCode[id] !== code) { touchCode[id] = code; hold(id, code); }
+      }
+    } else if (e.type === "touchend" || e.type === "touchcancel") {
+      ch = e.changedTouches || [];
+      for (i = 0; i < ch.length; i++) {
+        id = "t" + ch[i].identifier;
+        dbg(e.type + " " + id);
+        if (touchCode[id]) { drop(id, touchCode[id]); delete touchCode[id]; }
+      }
+    } else {
+      all = e.touches || [];
+      for (i = 0; i < all.length; i++) {
+        t = all[i]; id = "t" + t.identifier;
+        if (!touchCode[id]) continue;
+        code = codeAtPoint(t.clientX, t.clientY);
+        if (code && code !== touchCode[id]) {
+          drop(id, touchCode[id]); touchCode[id] = code; hold(id, code);
+        }
+      }
+    }
+  }
+  var TOPTS = { passive: true, capture: true };
+  document.addEventListener("touchstart", onTouch, TOPTS);
+  document.addEventListener("touchmove", onTouch, TOPTS);
+  document.addEventListener("touchend", onTouch, TOPTS);
+  document.addEventListener("touchcancel", onTouch, TOPTS);
+
+  function onPointerDown(e) {
+    var id = "p" + e.pointerId;
+    var code = codeOfEl(e.target) || codeAtPoint(e.clientX, e.clientY);
+    dbg("pointerdown " + id + " -> " + (code || "none"));
+    if (!code) return;
+    if (ptrCode[id] !== code) { ptrCode[id] = code; hold(id, code); }
+  }
+  function onPointerEnd(e) {
+    var id = "p" + e.pointerId;
+    if (ptrCode[id]) { dbg("pointerend " + id); drop(id, ptrCode[id]); delete ptrCode[id]; }
+  }
+  var POPT = { passive: true, capture: true };
+  document.addEventListener("pointerdown", onPointerDown, POPT);
+  document.addEventListener("pointerup", onPointerEnd, POPT);
+  document.addEventListener("pointercancel", onPointerEnd, POPT);
+
+  function boot() {
+    pad = window.__dePad;
+    if (!pad) return false;
+    [".action-z", ".action-x"].forEach(function (sel) {
+      var el = document.querySelector(sel);
+      if (el && el.parentNode) el.parentNode.replaceChild(el.cloneNode(true), el);
+    });
+    dbg("ready");
+    return true;
+  }
+  var tries = 0;
+  (function waitPad() {
+    if (boot() || ++tries > 120) return;
+    setTimeout(waitPad, 100);
+  })();
+})();
+</script>
+</body></html>
