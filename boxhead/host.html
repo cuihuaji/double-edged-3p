@@ -277,13 +277,24 @@ async function boot() {
 
 gateEl.addEventListener('click', boot, { once: true });
 
-/* 点画面 / 按任意键都保持 Ruffle 焦点，否则房主自己也按不动 */
-$('wrap').addEventListener('pointerdown', () => { if (player) player.focus({ preventScroll: true }); });
-addEventListener('keydown', (e) => {
-  if (player && document.activeElement !== player && !e.ctrlKey && !e.metaKey) {
-    player.focus({ preventScroll: true });
-  }
-}, true);
+/* 点画面 / 按任意键都保持 Ruffle 焦点。
+   原来只 focus 不补发，导致「焦点不在画面时按下的第一下按键被吞掉」，
+   体感就是必须先在画面里点一下才按得动。这里改成：焦点不对时先把这一下
+   原样转发给 Ruffle（带真实 code/key/keyCode，不受 KEYCODE 映射表限制）。 */
+function forwardKey(e) {
+  if (!player) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (document.activeElement === player) return;
+  player.focus({ preventScroll: true });
+  player.dispatchEvent(new KeyboardEvent(e.type, {
+    code: e.code, key: e.key, keyCode: e.keyCode, which: e.keyCode,
+    bubbles: true, cancelable: true, composed: true,
+  }));
+  e.preventDefault();
+}
+addEventListener('keydown', forwardKey, true);
+addEventListener('keyup', forwardKey, true);
+addEventListener('pointerdown', () => { if (player) player.focus({ preventScroll: true }); }, true);
 
 /* 复制房号 */
 $('copy').addEventListener('click', async () => {
