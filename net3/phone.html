@@ -1009,9 +1009,9 @@
         "  ICE " + (pc ? pc.iceConnectionState : "-") +
         "  画面 " + (v && v.videoWidth ? v.videoWidth + "x" + v.videoHeight : "-") +
         "  t=" + (v ? (v.currentTime || 0).toFixed(1) : "-") +
-        "  静音 " + (v && v.muted ? "是" : "否");
-        + "  错 " + (window.__npErrType || "-") + "×" + (window.__npErrCount || 0)
-        + "  重连 " + (window.__npSigRetry || 0)
+        "  静音 " + (v && v.muted ? "是" : "否") +
+        "  错 " + (window.__npErrType || "-") + "×" + (window.__npErrCount || 0) +
+        "  重连 " + (window.__npSigRetry || 0);
     } catch (e2) {}
   }, 1000);
 })();
@@ -1020,7 +1020,7 @@
 /* 自动更新：线上 version.json 一变，旧页面自己跳到新地址。
    守卫用 URL 里的 v 和线上版本比，避免「页面比 version.json 旧」时无限重载。 */
 (function () {
-  var BUILD = '2026-11-03-14';
+  var BUILD = '2026-11-03-15';
   var u = new URL(location.href);
   var got = u.searchParams.get('v');
   if (got === BUILD) return;
