@@ -131,5 +131,24 @@
     }
   })();
 </script>
+<script>
+/* 自动更新：线上 version.json 一变，旧页面自己跳到新地址。
+   守卫用 URL 里的 v 和线上版本比，避免「页面比 version.json 旧」时无限重载。 */
+(function () {
+  var BUILD = '2026-11-03-9';
+  var u = new URL(location.href);
+  var got = u.searchParams.get('v');
+  if (got === BUILD) return;
+  fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j || !j.v) return;
+      if (got === j.v) return;
+      u.searchParams.set('v', j.v);
+      location.replace(u.toString());
+    })
+    .catch(function () {});
+})();
+</script>
 </body>
 </html>

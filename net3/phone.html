@@ -742,6 +742,8 @@
       r.value = code;
       b.click();
       ov.className = "hide";
+      /* 记住上次房号：即使地址里没有 ?room=，下次打开也能直接连 */
+      try { localStorage.setItem("de_room", code); } catch (e) {} 
       return true;
     }
     function submit() {
@@ -756,8 +758,14 @@
       inp.addEventListener("input", function () { inp.style.borderColor = "#35485c"; });
     }
     var m = /[?&]room=([^&]+)/.exec(location.search);
-    if (m) { try { join(decodeURIComponent(m[1])); } catch (e) {} }
-    else setTimeout(function () { if (inp) inp.focus(); }, 300);
+    var code = null;
+    if (m) { try { code = decodeURIComponent(m[1]); } catch (e) { code = m[1]; } }
+    if (!code) { try { code = localStorage.getItem("de_room"); } catch (e) {} }
+    if (code) {
+      code = String(code).trim().toLowerCase().replace(/\s+/g, "");
+      if (/^de/.test(code) && join(code)) return;
+    }
+    setTimeout(function () { if (inp) inp.focus(); }, 300);
   })();
 </script>
 <script>
@@ -949,15 +957,38 @@
         (all[k] || []).forEach(function (x) { if (x && x.open) connOk = true; });
       });
     } catch (e) {}
-    d.textContent =
-      "房 " + ((roomEl && roomEl.value) || "-") +
-      "  信令 " + (peer && peer.open ? "on" : "off") +
-      "  好友 " + (connOk ? "on" : "off") +
-      "  ICE " + (pc ? pc.iceConnectionState : "-") +
-      "  画面 " + (v && v.videoWidth ? v.videoWidth + "x" + v.videoHeight : "-") +
-      "  t=" + (v ? (v.currentTime || 0).toFixed(1) : "-") +
-      "  静音 " + (v && v.muted ? "是" : "否");
+    var sig = "off";
+    try { sig = (typeof peer !== "undefined" && peer && peer.open) ? "on" : "off"; } catch (e9) {}
+    try {
+      d.textContent =
+        "房 " + ((roomEl && roomEl.value) || "-") +
+        "  信令 " + sig +
+        "  好友 " + (connOk ? "on" : "off") +
+        "  ICE " + (pc ? pc.iceConnectionState : "-") +
+        "  画面 " + (v && v.videoWidth ? v.videoWidth + "x" + v.videoHeight : "-") +
+        "  t=" + (v ? (v.currentTime || 0).toFixed(1) : "-") +
+        "  静音 " + (v && v.muted ? "是" : "否");
+    } catch (e10) {}
   }, 1000);
+})();
+</script>
+<script>
+/* 自动更新：线上 version.json 一变，旧页面自己跳到新地址。
+   守卫用 URL 里的 v 和线上版本比，避免「页面比 version.json 旧」时无限重载。 */
+(function () {
+  var BUILD = '2026-11-03-9';
+  var u = new URL(location.href);
+  var got = u.searchParams.get('v');
+  if (got === BUILD) return;
+  fetch('../version.json?t=' + Date.now(), { cache: 'no-store' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      if (!j || !j.v) return;
+      if (got === j.v) return;
+      u.searchParams.set('v', j.v);
+      location.replace(u.toString());
+    })
+    .catch(function () {});
 })();
 </script>
 </body></html>
