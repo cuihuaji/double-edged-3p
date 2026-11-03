@@ -474,6 +474,31 @@ $('copy').addEventListener('click', async () => {
 addEventListener('beforeunload', () => {
   try { if (peer) peer.destroy(); } catch (e) {}
 });
+
+/* ---------- 连接诊断条（右下角，一秒刷新一次）---------- */
+(function () {
+  const el = document.createElement('div');
+  el.id = 'diag';
+  Object.assign(el.style, {
+    position: 'fixed', left: '10px', bottom: '10px', zIndex: '9',
+    pointerEvents: 'none', padding: '3px 8px', borderRadius: '5px',
+    background: 'rgba(13,20,28,.86)', border: '1px solid #26323f',
+    color: '#6f8ba3', font: '11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace',
+    whiteSpace: 'pre',
+  });
+  document.body.appendChild(el);
+  setInterval(() => {
+    const p = (typeof peer !== 'undefined') ? peer : null;
+    const c = (typeof conn !== 'undefined') ? conn : null;
+    const pc = c && c.peerConnection;
+    const room = (document.getElementById('room') || {}).textContent || '-';
+    el.textContent =
+      '房号 ' + room +
+      '  信令 ' + (p && p.open ? 'on' : 'off') +
+      '  好友 ' + (c && c.open ? 'on' : 'off') +
+      '  ICE ' + (pc ? pc.iceConnectionState : '-');
+  }, 1000);
+})();
 </script>
 </body>
 </html>
