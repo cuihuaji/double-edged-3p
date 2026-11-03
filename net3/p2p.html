@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>双刃 · 点对点硬测试</title>
+<style>
+  html, body { margin: 0; background: #080b10; color: #d7e2ee;
+    font: 14px/1.65 -apple-system, "Microsoft YaHei", system-ui, sans-serif; }
+  .wrap { padding: 14px 14px 40px; }
+  h1 { font-size: 17px; margin: 0 0 4px; letter-spacing: 1px; }
+  .sub { color: #7d8fa3; font-size: 12px; margin-bottom: 12px; line-height: 1.6; }
+  .verdict { padding: 13px 14px; border-radius: 10px; font-size: 15px; font-weight: 600;
+    background: #16202b; border: 1px solid #35485c; margin-bottom: 14px; line-height: 1.55; }
+  .verdict.ok { background: #10301f; border-color: #2f6a45; color: #7ee2a8; }
+  .verdict.bad { background: #3a1a16; border-color: #7a3b2c; color: #ffa08c; }
+  .verdict.wait { background: #2b2210; border-color: #6b5320; color: #e8c56a; }
+  .code { font-family: Consolas, monospace; font-size: 44px; letter-spacing: 8px; text-align: center;
+    color: #6fd3ff; padding: 10px 0 14px; }
+  input.code-in { width: 100%; box-sizing: border-box; padding: 14px; font-size: 30px; letter-spacing: 8px;
+    text-align: center; background: #16202b; border: 1px solid #35485c; border-radius: 9px;
+    color: #e8eef6; font-family: Consolas, monospace; outline: none; text-transform: lowercase; }
+  .btns { display: flex; gap: 9px; margin: 10px 0 12px; }
+  button { flex: 1; padding: 15px 8px; font-size: 15px; font-weight: 600; letter-spacing: 1px;
+    background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; border: 0; border-radius: 9px; }
+  button.host { background: linear-gradient(180deg,#2f9a63,#1f7a4c); }
+  button:disabled { opacity: .5; }
+  .row { display: flex; gap: 8px; padding: 6px 0; border-bottom: 1px solid #17202b; }
+  .row .k { flex: 0 0 92px; color: #7d8fa3; font-size: 12.5px; }
+  .row .v { flex: 1 1 auto; word-break: break-all; font-family: Consolas, monospace; font-size: 12px; }
+  .ok-v { color: #7ee2a8; } .bad-v { color: #ffa08c; } .mid-v { color: #e8c56a; }
+  .foot { margin-top: 14px; color: #61707f; font-size: 11.5px; line-height: 1.75; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>双刃 · 点对点硬测试</h1>
+  <div class="sub">
+    不用 PeerJS，不用 0.peerjs.com。只用公共中转（ntfy.sh）交换一次 SDP，
+    然后让两台设备**直接尝试建连接**。连不上就是网络打洞失败，跟页面代码无关。
+  </div>
+
+  <div id="verdict" class="verdict wait">选一个角色开始</div>
+
+  <div id="setup">
+    <div class="btns">
+      <button class="host" id="asA">我是发起方（房主）</button>
+      <button id="asB">我是接收方（好友）</button>
+    </div>
+    <input class="code-in" id="code" placeholder="4 位码" maxlength="4" autocomplete="off"
+           autocapitalize="off" spellcheck="false" />
+    <div style="color:#61707f;font-size:11.5px;line-height:1.6">
+      发起方点完会生成一个 4 位码，念给接收方；接收方把码填进上面的框，再点「我是接收方」。
+    </div>
+  </div>
+
+  <div id="roomBox" style="display:none">
+    <div style="color:#7d8fa3;font-size:12px;text-align:center;margin-top:6px">把码告诉对方，然后等</div>
+    <div class="code" id="showCode">----</div>
+    <div id="role"></div>
+  </div>
+
+  <div id="rows" style="margin-top:14px"></div>
+
+  <div class="foot">
+    只看两行就能定结论：<b>选中的候选对</b>（有没有成功的一对）和 <b>数据通道</b>（开没开）。<br>
+    如果「我的候选」里 host 全是 .local 且 relay 是 0，那这台设备在校园网里既没有可用地址也没有中继。
+  </div>
+</div>
+
+<script>
+(function () {
+  var rowsEl = document.getElementById('rows');
+  var vEl = document.getElementById('verdict');
+  var rows = {};
+  var TOPIC = 'dep2p_';
+  var code = '';
+  var role = '';           // 'A' | 'B'
+  var pc = null, dc = null, es = null;
+
+  function row(key, label) {
+    var d = document.createElement('div');
+    d.className = 'row';
+    var k = document.createElement('div');
+    k.className = 'k'; k.textContent = label;
+    var v = document.createElement('div');
+    v.className = 'v'; v.textContent = '…';
+    d.appendChild(k); d.appendChild(v);
+    rowsEl.appendChild(d);
+    rows[key] = v;
+    return function (text, cls) { v.textContent = text; v.className = 'v' + (cls ? ' ' + cls : ''); };
+  }
+  function verdict(text, cls) { vEl.textContent = text; vEl.className = 'verdict' + (cls ? ' ' + cls : ''); }
+
+  var setSig = row('sig', '中转通道');
+  var setMine = row('mine', '我的候选');
+  var setTheirs = row('theirs', '对方候选');
+  var setIce = row('ice', 'ICE 状态');
+  var setPair = row('pair', '选中的候选对');
+  var setDc = row('dc', '数据通道');
+
+  var ICE = {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'stun:global.stun.twilio.com:3478' }
+    ]
+  };
+
+  function four() {
+    var s = 'abcdefghijkmnpqrstuvwxyz23456789', o = '';
+    for (var i = 0; i < 4; i++) o += s[Math.floor(Math.random() * s.length)];
+    return o;
+  }
+
+  function pub(msg) {
+    return fetch('https://ntfy.sh/' + TOPIC + code, {
+      method: 'POST',
+      body: JSON.stringify(msg),
+      headers: { 'Content-Type': 'text/plain' }
+    });
+  }
+
+  function sub() {
+    try {
+      es = new EventSource('https://ntfy.sh/' + TOPIC + code + '/sse');
+      es.onopen = function () { setSig('SSE 已连 ✓', 'ok-v'); };
+      es.onerror = function () { setSig('SSE 断开（会自愈）', 'mid-v'); };
+      es.onmessage = function (ev) {
+        try {
+          var wrap = JSON.parse(ev.data);
+          var m = JSON.parse(wrap.message);
+          if (m.to === role) return;      // 忽略自己发的
+          onMsg(m);
+        } catch (e) {}
+      };
+    } catch (e) { setSig('SSE 起不来: ' + String(e).slice(0, 30), 'bad-v'); }
+  }
+
+  function countCands(sdp) {
+    var c = { host: 0, srflx: 0, prflx: 0, relay: 0, mdns: 0, real: 0 };
+    (sdp.match(/candidate:[^\r\n]+/g) || []).forEach(function (l) {
+      var t = (/ typ (\w+)/.exec(l) || [])[1];
+      if (c[t] !== undefined) c[t]++;
+      if (/\.local/.test(l)) c.mdns++;
+      else if (/ \d+\.\d+\.\d+\.\d+ \d+ typ /.test(l)) c.real++;
+    });
+    return c;
+  }
+
+  function waitGather(p) {
+    return new Promise(function (res) {
+      if (p.iceGatheringState === 'complete') return res();
+      var done = false;
+      p.onicegatheringstatechange = function () {
+        if (p.iceGatheringState === 'complete' && !done) { done = true; res(); }
+      };
+      setTimeout(function () { if (!done) { done = true; res(); } }, 5000);
+    });
+  }
+
+  function bindStats() {
+    setIce(pc.iceConnectionState + ' / ' + pc.connectionState);
+    pc.oniceconnectionstatechange = function () {
+      setIce(pc.iceConnectionState + ' / ' + pc.connectionState,
+        pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed' ? 'ok-v'
+        : pc.iceConnectionState === 'failed' ? 'bad-v' : 'mid-v');
+      if (pc.iceConnectionState === 'failed') {
+        verdict('打洞失败（ICE failed）：两台设备之间没有任何一对候选能通。这就是黑屏的直接原因。', 'bad');
+      }
+    };
+    pc.onconnectionstatechange = function () {
+      setIce(pc.iceConnectionState + ' / ' + pc.connectionState,
+        pc.connectionState === 'connected' ? 'ok-v'
+        : pc.connectionState === 'failed' ? 'bad-v' : 'mid-v');
+      if (pc.connectionState === 'connected') {
+        verdict('直连成功 ✓ 两台设备能互通 —— 问题在信令/页面层，不在网络。', 'ok');
+        dumpPair();
+      }
+    };
+    pc.onicecandidateerror = function (e) {
+      setTheirs('候选错误 ' + e.errorCode + ' ' + (e.url || '').slice(0, 40), 'mid-v');
+    };
+  }
+
+  function dumpPair() {
+    try {
+      pc.getStats().then(function (st) {
+        st.forEach(function (r) {
+          if (r.type === 'candidate-pair' && (r.state === 'succeeded' || r.nominated)) {
+            var l = st.get ? st.get(r.localCandidateId) : null;
+            var rr = st.get ? st.get(r.remoteCandidateId) : null;
+            if (l && rr) {
+              setPair(l.candidateType + '(' + l.protocol + ') ↔ ' + rr.candidateType +
+                '(' + rr.protocol + ')  ' + (l.address || '') + ':' + l.port +
+                ' ↔ ' + (rr.address || '') + ':' + rr.port, 'ok-v');
+            }
+          }
+        });
+      });
+    } catch (e) {}
+  }
+
+  function makePc() {
+    pc = new RTCPeerConnection(ICE);
+    bindStats();
+    var mine = { host: 0, srflx: 0, relay: 0, list: [] };
+    pc.onicecandidate = function (e) {
+      if (!e.candidate) {
+        var all = mine.list.join(' ');
+        setMine('host ' + mine.host + ' · srflx ' + mine.srflx + ' · relay ' + mine.relay + '   ' + all,
+          mine.srflx ? 'mid-v' : 'bad-v');
+        return;
+      }
+      var c = e.candidate;
+      var t = c.type || (/ typ (\w+)/.exec(c.candidate) || [])[1];
+      if (mine[t] !== undefined) mine[t]++;
+      if (mine.list.length < 3) mine.list.push(String(c.address || '?') + ':' + c.port + '/' + t);
+      setMine('host ' + mine.host + ' · srflx ' + mine.srflx + ' · relay ' + mine.relay + '  （采集中）');
+    };
+    return pc;
+  }
+
+  function finish(ok) {
+    setDc(ok ? '已打开 ✓' : '未打开 ✗', ok ? 'ok-v' : 'bad-v');
+  }
+
+  function onMsg(m) {
+    if (m.t === 'offer' && role === 'B') {
+      setTheirs('收到 offer：' + JSON.stringify(countCands(m.sdp)));
+      var c1 = countCands(m.sdp);
+      if (!c1.real && c1.mdns) {
+        setTheirs('收到 offer：host ' + c1.host + '(' + c1.mdns + ' 个是 .local) · srflx ' + c1.srflx +
+          ' · relay ' + c1.relay, 'mid-v');
+      }
+      pc.setRemoteDescription({ type: 'offer', sdp: m.sdp })
+        .then(function () { return pc.createAnswer(); })
+        .then(function (a) { return pc.setLocalDescription(a); })
+        .then(function () { return waitGather(pc); })
+        .then(function () { return pub({ t: 'answer', from: 'B', to: 'A', sdp: pc.localDescription.sdp }); })
+        .then(function () { verdict('已回发 answer，正在等直连…', 'wait'); })
+        .catch(function (e) { verdict('回发失败: ' + String(e).slice(0, 50), 'bad'); });
+    }
+    if (m.t === 'answer' && role === 'A') {
+      var c2 = countCands(m.sdp);
+      setTheirs('收到 answer：host ' + c2.host + ' · srflx ' + c2.srflx + ' · relay ' + c2.relay +
+        (c2.mdns ? '（' + c2.mdns + ' 个 .local）' : ''), c2.srflx || c2.relay ? 'mid-v' : 'bad-v');
+      pc.setRemoteDescription({ type: 'answer', sdp: m.sdp })
+        .then(function () { verdict('已收到 answer，正在打洞…', 'wait'); })
+        .catch(function (e) { verdict('设置 answer 失败: ' + String(e).slice(0, 50), 'bad'); });
+    }
+  }
+
+  function start(which) {
+    role = which;
+    document.getElementById('setup').style.display = 'none';
+    document.getElementById('roomBox').style.display = 'block';
+    if (which === 'A') {
+      code = four();
+      document.getElementById('showCode').textContent = code;
+      document.getElementById('code').value = code;
+    } else {
+      code = (document.getElementById('code').value || '').trim().toLowerCase();
+      document.getElementById('showCode').textContent = code || '----';
+    }
+    if (!code) { verdict('先填 4 位码', 'wait'); return; }
+    document.getElementById('role').textContent =
+      which === 'A' ? '你的角色：发起方（等对方输入 ' + code + ' 后点接收方）' : '你的角色：接收方（码 ' + code + '）';
+
+    verdict('正在交换 SDP…', 'wait');
+    sub();
+    makePc();
+
+    if (which === 'A') {
+      dc = pc.createDataChannel('t', { reliable: true });
+      dc.onopen = function () { finish(true); verdict('直连成功 ✓ 数据通道已开 —— 网络没问题，问题在信令/页面层。', 'ok'); dumpPair(); };
+      dc.onclose = function () { finish(false); };
+      setTimeout(function () {
+        pc.createOffer()
+          .then(function (o) { return pc.setLocalDescription(o); })
+          .then(function () { return waitGather(pc); })
+          .then(function () { return pub({ t: 'offer', from: 'A', to: 'B', sdp: pc.localDescription.sdp }); })
+          .then(function () { setSig('offer 已发出 ✓', 'ok-v'); verdict('offer 已发出，等对方回 answer…', 'wait'); })
+          .catch(function (e) { verdict('发 offer 失败: ' + String(e).slice(0, 50), 'bad'); });
+      }, 1200);
+    } else {
+      verdict('已就位，等对方的 offer（对方点完发起方后 1~2 秒内到）…', 'wait');
+    }
+
+    setTimeout(function () {
+      if (pc.connectionState !== 'connected') {
+        verdict('15 秒没连上：' + pc.iceConnectionState + ' / ' + pc.connectionState +
+          '。两台设备之间没有可用路径。', 'bad');
+        setDc('未打开 ✗', 'bad-v');
+      }
+    }, 15000);
+  }
+
+  document.getElementById('asA').addEventListener('click', function () { start('A'); });
+  document.getElementById('asB').addEventListener('click', function () { start('B'); });
+})();
+</script>
+</body>
+</html>
