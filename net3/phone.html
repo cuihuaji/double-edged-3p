@@ -329,6 +329,9 @@
     document.addEventListener("mousemove", fwdInput, true);
     peer.on("error", (e) => {
       const t = (e && e.type) || String(e);
+    /* 状态条要能区分 peer-unavailable（房号不对/房主没开房）和 network/server-error（信令问题） */
+    window.__npErrType = t;
+    window.__npErrCount = (window.__npErrCount || 0) + 1;
       // 房主还没开房 / 刚刷新：自动重试，最多等 40 秒
       if (t === "peer-unavailable" && tries < 20) {
         tries++;
@@ -975,6 +978,7 @@
         "  画面 " + (v && v.videoWidth ? v.videoWidth + "x" + v.videoHeight : "-") +
         "  t=" + (v ? (v.currentTime || 0).toFixed(1) : "-") +
         "  静音 " + (v && v.muted ? "是" : "否");
+        + "  错 " + (window.__npErrType || "-") + "×" + (window.__npErrCount || 0)
     } catch (e2) {}
   }, 1000);
 })();
@@ -983,7 +987,7 @@
 /* 自动更新：线上 version.json 一变，旧页面自己跳到新地址。
    守卫用 URL 里的 v 和线上版本比，避免「页面比 version.json 旧」时无限重载。 */
 (function () {
-  var BUILD = '2026-11-03-11';
+  var BUILD = '2026-11-03-12';
   var u = new URL(location.href);
   var got = u.searchParams.get('v');
   if (got === BUILD) return;
