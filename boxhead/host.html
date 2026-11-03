@@ -48,6 +48,7 @@
   <span id="st">初始化…</span>
   <span class="sp"></span>
   <button id="copy">复制房号</button>
+  <button id="resetsave" title="清掉游戏存档，让按键默认值重新生效">重置存档</button>
   <a href="../index.html">返回大厅</a>
 </div>
 
@@ -119,19 +120,31 @@ function randChars(n) {
 roomId = 'bh' + randChars(6);
 roomEl.textContent = roomId;
 
-/* ---------- 注入按键 ---------- */
+/* ---------- 注入按键 ----------
+   照抄 net3/vendor/ruffle-touch.js 里能跑通的写法：先聚焦 player，
+   然后派发到 **window**（不是 player 元素，派到元素上 Ruffle 收不到），
+   并且 key/code/keyCode 三个字段都要给，数字键的 key 要是字符本身。 */
+const KEYDEF = {
+  ArrowUp:    { key: 'ArrowUp',    code: 'ArrowUp',    keyCode: 38 },
+  ArrowDown:  { key: 'ArrowDown',  code: 'ArrowDown',  keyCode: 40 },
+  ArrowLeft:  { key: 'ArrowLeft',  code: 'ArrowLeft',  keyCode: 37 },
+  ArrowRight: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+  Numpad1:    { key: '1', code: 'Numpad1', keyCode: 97 },
+  Numpad2:    { key: '2', code: 'Numpad2', keyCode: 98 },
+  Numpad3:    { key: '3', code: 'Numpad3', keyCode: 99 },
+};
+
 function inject(type, code) {
   if (!player) return;
-  const kc = KEYCODE[code];
-  if (kc === undefined) return;
+  const d = KEYDEF[code];
+  if (!d) return;
 
-  window.__lastInject = { type, code, kc, at: Date.now() };
+  window.__lastInject = { type, code, kc: d.keyCode, at: Date.now() };
 
-  /* Ruffle 只在元素有焦点时处理键盘，不聚焦的话事件会被静默丢掉 */
   if (document.activeElement !== player) player.focus({ preventScroll: true });
 
-  player.dispatchEvent(new KeyboardEvent(type, {
-    code, key: code, keyCode: kc, which: kc,
+  window.dispatchEvent(new KeyboardEvent(type, {
+    key: d.key, code: d.code, keyCode: d.keyCode, which: d.keyCode,
     bubbles: true, cancelable: true, composed: true,
   }));
 }
@@ -334,7 +347,7 @@ function forwardKey(e) {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (document.activeElement === player) return;
   player.focus({ preventScroll: true });
-  player.dispatchEvent(new KeyboardEvent(e.type, {
+  window.dispatchEvent(new KeyboardEvent(e.type, {
     code: e.code, key: e.key, keyCode: e.keyCode, which: e.keyCode,
     bubbles: true, cancelable: true, composed: true,
   }));
@@ -343,6 +356,32 @@ function forwardKey(e) {
 addEventListener('keydown', forwardKey, true);
 addEventListener('keyup', forwardKey, true);
 addEventListener('pointerdown', () => { if (player) player.focus({ preventScroll: true }); }, true);
+
+/* 重置存档：按键默认值只在「没有存档」时写入，旧存档会盖住新的键位。
+   Ruffle 把 SharedObject 存在 IndexedDB 里，删掉再刷新即可。 */
+$('resetsave').addEventListener('click', async () => {
+  const btn = $('resetsave');
+  btn.disabled = true;
+  btn.textContent = '清理中…';
+  try {
+    if (indexedDB.databases) {
+      const dbs = await indexedDB.databases();
+      for (const d of dbs) {
+        if (!d.name || !/ruffle|shared|flash/i.test(d.name)) continue;
+        await new Promise((res) => {
+          const req = indexedDB.deleteDatabase(d.name);
+          req.onsuccess = req.onerror = req.onblocked = () => res();
+        });
+      }
+    }
+  } catch (e) {}
+  try {
+    for (const k of Object.keys(localStorage)) {
+      if (/ruffle|shared|flash/i.test(k)) localStorage.removeItem(k);
+    }
+  } catch (e) {}
+  location.reload();
+});
 
 /* 复制房号 */
 $('copy').addEventListener('click', async () => {
