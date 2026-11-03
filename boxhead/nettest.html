@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>盒子头3 · 网络自检</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 22px 20px 40px; background: #0b0f14; color: #d7e2ec;
+    font: 14px/1.7 -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+  }
+  h1 { margin: 0 0 4px; font-size: 18px; color: #ffd166; letter-spacing: .5px; }
+  .sub { margin: 0 0 18px; font-size: 12.5px; color: #7b8fa3; }
+  #out {
+    margin: 0; padding: 14px 16px; border-radius: 8px; background: #0d141c;
+    border: 1px solid #1e2a36; font: 12.5px/1.85 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap; word-break: break-all; color: #9fb4c7; min-height: 220px;
+  }
+  #out b { color: #ffd166; font-weight: 600; }
+  #out .ok { color: #7fd48a; }
+  #out .bad { color: #e28a7a; }
+  #out .warn { color: #ffd166; }
+  .row { display: flex; gap: 10px; margin-top: 16px; align-items: center; flex-wrap: wrap; }
+  button {
+    padding: 8px 16px; border-radius: 7px; border: 1px solid #2a3846; background: #16202b;
+    color: #d7e2ec; font-size: 13px; cursor: pointer;
+  }
+  button:hover { background: #1c2833; }
+  #copy { color: #7fd48a; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<h1>盒子头3 · 网络自检</h1>
+<p class="sub">这个页面只做一件事：判断你这台机器能不能和对方点对点（P2P）连上。把下面的结果整段发给房主。</p>
+<pre id="out">正在检测…</pre>
+<div class="row">
+  <button id="again">重新检测</button>
+  <button id="copyBtn">复制结果</button>
+  <span id="copy"></span>
+</div>
+
+<script>
+const STUNS = [
+  'stun:stun.l.google.com:19302',
+  'stun:stun.cloudflare.com:3478',
+  'stun:stun.miwifi.com:3478',
+  'stun:stun.chat.bilibili.com:3478',
+  'stun:stun.hitv.com:3478',
+  'stun:global.stun.twilio.com:3478',
+  'stun:stun.nextcloud.com:443',
+];
+
+const outEl = document.getElementById('out');
+const lines = [];
+let lastText = '';
+
+function say(text, cls) {
+  const span = cls ? '<span class="' + cls + '">' + text + '</span>' : text;
+  lines.push(span);
+  const plain = lines.map((l) => l.replace(/<[^>]+>/g, '')).join('\n');
+  lastText = plain;
+  outEl.innerHTML = plain;
+}
+function sayHtml(html) {
+  lines.push(html);
+  lastText = lines.map((l) => l.replace(/<[^>]+>/g, '')).join('\n');
+  outEl.innerHTML = lastText;
+}
+
+/* 对单个 STUN：只放它自己，看能不能拿到 srflx（公网映射） */
+function probeStun(url) {
+  return new Promise((resolve) => {
+    const res = { url, srflx: 0, mapped: null, ms: null, err: null };
+    if (!window.RTCPeerConnection) { res.err = 'no-rtc'; return resolve(res); }
+    let pc;
+    try {
+      pc = new RTCPeerConnection({ iceServers: [{ urls: url }] });
+    } catch (e) { res.err = String(e); return resolve(res); }
+    const t0 = performance.now();
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      try { pc.close(); } catch (e) {}
+      resolve(res);
+    };
+    pc.onicecandidate = (e) => {
+      if (!e.candidate) return;
+      const c = e.candidate;
+      const t = (c.candidate.match(/ typ (\w+)/) || [])[1] || '?';
+      if (t === 'srflx' && !res.mapped) {
+        res.srflx++;
+        res.mapped = (c.address || '') + ':' + (c.port || '');
+        res.ms = Math.round(performance.now() - t0);
+        finish();
+      }
+    };
+    try {
+      pc.createDataChannel('x');
+      pc.createOffer().then((o) => pc.setLocalDescription(o)).catch((e) => { res.err = String(e); finish(); });
+    } catch (e) { res.err = String(e); finish(); }
+    setTimeout(finish, 5000);
+  });
+}
+
+async function run() {
+  lines.length = 0;
+  outEl.innerHTML = '正在检测…';
+  document.getElementById('copy').textContent = '';
+
+  sayHtml('<b>=== 1. 环境 ===</b>');
+  say('浏览器: ' + navigator.userAgent);
+  say('WebRTC: ' + (window.RTCPeerConnection ? '可用' : '不可用 ← 这个会直接导致连不上'), window.RTCPeerConnection ? 'ok' : 'bad');
+  say('页面: ' + location.href);
+  say('');
+
+  sayHtml('<b>=== 2. STUN 能否拿到公网映射（srflx）===</b>');
+  const results = [];
+  for (const s of STUNS) {
+    const r = await probeStun(s);
+    results.push(r);
+    const name = s.replace('stun:', '');
+    if (r.srflx > 0) {
+      say('  ✓ ' + name + '  →  ' + r.mapped + '  (' + r.ms + ' ms)', 'ok');
+    } else {
+      say('  ✗ ' + name + '  →  无响应' + (r.err ? ' (' + r.err + ')' : ''), 'bad');
+    }
+  }
+  say('');
+
+  const okList = results.filter((r) => r.srflx > 0);
+  const ips = [...new Set(okList.map((r) => (r.mapped || '').split(':')[0]))];
+  const ports = [...new Set(okList.map((r) => (r.mapped || '').split(':')[1]))];
+
+  sayHtml('<b>=== 3. 判定 ===</b>');
+  if (!window.RTCPeerConnection) {
+    say('这台机器的浏览器不提供 WebRTC，任何 P2P 方案都跑不了。', 'bad');
+  } else if (okList.length === 0) {
+    say('一个 STUN 都没返回 → 你这边的 UDP 出不去（代理/VPN/防火墙在拦）。', 'bad');
+    say('解法：关掉代理或 VPN，或者换一个网络（手机热点）再试。', 'warn');
+  } else if (ips.length > 1) {
+    say('公网 IP 不一致（' + ips.join(' / ') + '）→ 走了代理或多出口。', 'bad');
+    say('解法：关掉代理/VPN 再连。', 'warn');
+  } else if (ports.length === 1) {
+    say('公网 IP ' + ips[0] + '，各 STUN 拿到的端口一致 → 锥形 NAT，', 'ok');
+    say('打洞成功率很高。如果你还是连不上，问题在对方那侧。', 'ok');
+  } else {
+    say('公网 IP ' + ips[0] + '，但不同 STUN 给的端口不同（' + ports.join('/') + '）', 'warn');
+    say('→ 对称型 NAT。对方也是对称型时，直连必失败，只能走 TURN 中继。', 'warn');
+    say('如果对方是锥形 NAT（多数家庭宽带），一般还是能连上。', 'ok');
+  }
+  say('');
+  say('把以上全部内容发给房主即可。');
+}
+
+document.getElementById('again').onclick = run;
+document.getElementById('copyBtn').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(lastText);
+    document.getElementById('copy').textContent = '已复制';
+  } catch (e) {
+    document.getElementById('copy').textContent = '复制失败，手动选中吧';
+  }
+};
+
+run();
+</script>
+</body>
+</html>
