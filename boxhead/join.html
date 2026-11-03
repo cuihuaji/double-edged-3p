@@ -428,7 +428,7 @@ addEventListener('beforeunload', () => { try { if (peer) peer.destroy(); } catch
     const room = roomEl ? (roomEl.textContent || roomEl.value || '-') : '-';
     el.textContent =
       '房号 ' + room +
-      '  建 2026-11-03-7' +
+      '  建 2026-11-03-8' +
       '  信令 ' + (p && p.open ? 'on' : 'off') +
       '  好友 ' + (c && c.open ? 'on' : 'off') +
       '  ICE ' + (pc ? pc.iceConnectionState : '-') +
@@ -499,7 +499,7 @@ window.__selfMap = { state: 'probing', mapped: null };
    守卫用「URL 里的 v」和「线上版本」比，不用页面里的 BUILD 比——
    否则页面代码比 version.json 旧时会自己跳自己，无限重载。 */
 (function () {
-  const BUILD = '2026-11-03-7';
+  const BUILD = '2026-11-03-8';
   const u = new URL(location.href);
   const got = u.searchParams.get('v');
   if (got === BUILD) return;
