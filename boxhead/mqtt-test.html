@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MQTT 中继吞吐测试</title>
+<style>
+  body { margin: 0; background: #080b10; color: #d7e2ee;
+    font: 14px/1.7 -apple-system, "Microsoft YaHei", system-ui, sans-serif; padding: 16px 16px 40px; }
+  h1 { font-size: 17px; margin: 0 0 6px; }
+  .sub { color: #7d8fa3; font-size: 12.5px; margin-bottom: 14px; }
+  button { width: 100%; padding: 14px; font-size: 15px; font-weight: 600; border: 0; border-radius: 9px;
+    background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; margin-bottom: 14px; }
+  button:disabled { opacity: .5; }
+  pre { background: #101822; border: 1px solid #24354a; border-radius: 10px; padding: 12px;
+    font-family: Consolas, monospace; font-size: 12px; line-height: 1.75; white-space: pre-wrap; margin: 0; }
+  .ok { color: #7ee2a8; } .bad { color: #ffa08c; } .mid { color: #e8c56a; }
+</style>
+</head>
+<body>
+<h1>MQTT 中继吞吐测试</h1>
+<div class="sub">同一页面里开两个客户端：A 发包，B 收包，测 RTT 和 8KB 图帧的持续速率。过 broker 中转，不直连。</div>
+<button id="go">开始测试</button>
+<pre id="log">点上面开始…</pre>
+
+<script src="mqtt-lite.js"></script>
+<script>
+(function () {
+  var logEl = document.getElementById('log');
+  function log(s, cls) {
+    var span = cls ? '<span class="' + cls + '">' + s + '</span>' : s;
+    logEl.innerHTML += (logEl.innerHTML.endsWith('…') ? '\n' : '\n') + span;
+  }
+
+  var BROKERS = [
+    'wss://broker.emqx.io:8084/mqtt',
+    'wss://broker.hivemq.com:8884/mqtt'
+  ];
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  async function testBroker(url) {
+    var tag = url.split('/')[2];
+    log('--- ' + tag + ' ---', 'mid');
+    var suffix = Math.random().toString(36).slice(2, 8);
+    var topic = 'dep2p_bench/' + suffix;
+
+    var A = new MqttLite(url, 'A' + suffix);
+    var B = new MqttLite(url, 'B' + suffix);
+
+    try {
+      await A.connect();
+      await B.connect();
+    } catch (e) {
+      log('  连接失败：' + e.message, 'bad');
+      return;
+    }
+    log('  两个客户端都连上了', 'ok');
+
+    var got = [];
+    var t0 = 0;
+    B.subscribe(topic, function (bytes) {
+      got.push({ t: performance.now() - t0, len: bytes.length });
+    });
+    await sleep(700);
+
+    // 1) 小包 RTT
+    t0 = performance.now();
+    var rtts = [];
+    for (var i = 0; i < 5; i++) {
+      var before = got.length;
+      var s = performance.now();
+      A.publish(topic, 'p' + i);
+      var deadline = Date.now() + 2000;
+      while (got.length === before && Date.now() < deadline) await sleep(10);
+      if (got.length > before) rtts.push(Math.round(performance.now() - s));
+      await sleep(120);
+    }
+    log('  小包 RTT：' + (rtts.length ? rtts.join(' / ') + ' ms' : '没收到'), rtts.length ? 'ok' : 'bad');
+
+    // 2) 8KB 帧，8 fps，40 帧
+    var payload = new Uint8Array(8192);
+    for (var k = 0; k < payload.length; k++) payload[k] = (k * 31) & 0xff;
+
+    var recv = 0;
+    var lat = [];
+    B.subscribe(topic + '/v', function (bytes) {
+      recv++;
+      lat.push(Math.round(performance.now() - sendAt));
+    });
+
+    var sendAt = 0;
+    var start = performance.now();
+    var N = 40;
+    for (var f = 0; f < N; f++) {
+      sendAt = performance.now();
+      payload[0] = f & 0xff;
+      A.publish(topic + '/v', payload);
+      await sleep(125);          // 8 fps
+    }
+    var elapsed = performance.now() - start;
+    await sleep(2500);
+
+    var kbps = (recv * 8192 * 8) / (elapsed / 1000) / 1000;
+    var avgLat = lat.length ? Math.round(lat.reduce(function (a, b) { return a + b; }, 0) / lat.length) : -1;
+    var maxLat = lat.length ? Math.max.apply(null, lat) : -1;
+    log('  8KB×' + N + ' @8fps → 收到 ' + recv + '/' + N +
+        '  实测 ' + kbps.toFixed(0) + ' kbps  延迟 平均 ' + avgLat + 'ms / 最大 ' + maxLat + 'ms',
+        recv >= N * 0.9 ? 'ok' : 'bad');
+
+    A.close(); B.close();
+    await sleep(500);
+  }
+
+  document.getElementById('go').addEventListener('click', async function () {
+    this.disabled = true;
+    logEl.innerHTML = '开始…';
+    for (var i = 0; i < BROKERS.length; i++) await testBroker(BROKERS[i]);
+    log('（总时长应 < 20 秒；如果 8KB 帧丢得多，说明公共 broker 扛不住这个码率）', 'mid');
+  });
+})();
+</script>
+</body>
+</html>
