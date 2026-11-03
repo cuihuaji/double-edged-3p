@@ -362,7 +362,7 @@ async function boot() {
     await p.load(SWF + '?v=' + Date.now());
     player = p;
     window.__traces = window.__traces || [];
-    try { p.traceObserver = (m) => { window.__traces.push(String(m)); }; } catch (e) {}
+    try { p.traceObserver = (m) => { window.__traces.push(String(m)); if (window.__traces.length > 200) window.__traces.shift(); }; } catch (e) {}
     p.tabIndex = 0;
     p.focus();
 
