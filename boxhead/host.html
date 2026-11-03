@@ -256,7 +256,22 @@ async function boot() {
     p.style.transformOrigin = '0 0';
     $('rc').appendChild(p);
 
-    await p.load(SWF);
+    /* Pages 重建窗口里 SWF 会短暂 404，直接 load 会掉进 Ruffle 的报错页。
+       先自己探测，最多重试 3 次（每次换 cache-busting 参数）。 */
+    setState('加载游戏…', 'warn');
+    let ok = false;
+    let lastLoadErr = '';
+    for (let i = 0; i < 3 && !ok; i++) {
+      if (i) { setState(`游戏文件还没同步好，重试 ${i}/3 …`, 'warn'); await new Promise(r => setTimeout(r, 1200)); }
+      try {
+        const res = await fetch(`${SWF}?v=${Date.now()}`, { method: 'HEAD', cache: 'no-store' });
+        ok = res.ok;
+        if (!ok) lastLoadErr = 'HTTP ' + res.status;
+      } catch (e) { lastLoadErr = (e && e.message) || String(e); }
+    }
+    if (!ok) { setState('游戏文件取不到（' + lastLoadErr + '），稍等几秒再刷新本页', 'err'); return; }
+
+    await p.load(SWF + '?v=' + Date.now());
     player = p;
     p.tabIndex = 0;
     p.focus();
