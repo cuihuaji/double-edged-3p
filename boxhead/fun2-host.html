@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>盒子头 2PLAY · 房主（WebRTC版）</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #07090d; color: #d7e2ee;
+    font: 14px/1.6 -apple-system, "Microsoft YaHei", system-ui, sans-serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #rc { position: relative; }
+  #gate { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; background: #07090d;
+    cursor: pointer; text-align: center; padding: 20px; }
+  #gate h1 { font-size: 20px; margin: 0; letter-spacing: 1px; }
+  #gate .room { font-family: Consolas, monospace; font-size: 40px; letter-spacing: 6px; color: #6fd3ff; }
+  #gate .tip { color: #7d8fa3; font-size: 12.5px; line-height: 1.9; max-width: 540px; }
+  #gate button { padding: 14px 34px; font-size: 16px; font-weight: 600; border: 0; border-radius: 9px;
+    background: linear-gradient(180deg,#2f9a63,#1f7a4c); color: #fff; cursor: pointer; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: 5px 9px;
+    background: rgba(7,9,13,.86); border-top: 1px solid #1a2532;
+    font-family: Consolas, monospace; font-size: 11.5px; color: #8fa3b8; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  #bar b { color: #6fd3ff; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="rc"></div></div>
+<div id="bar">初始化…</div>
+
+<div id="gate">
+  <h1>盒子头 2PLAY · 房主（WebRTC 视频版）</h1>
+  <div class="room" id="roomCode">····</div>
+  <div class="tip">
+    画面走 WebRTC 硬编码视频（双刃同款架构，延迟 ~50-100ms），按键走中继。<br>
+    <b>把房间码发给好友，好友打开「好友（WebRTC版）」页填码加入。</b>
+  </div>
+  <button id="startBtn">开始游戏</button>
+</div>
+
+<script src="../html5/js/ruffle-nightly/ruffle.js"></script>
+<script>
+(function () {
+  'use strict';
+  var SWF = 'boxhead2play_cn.swf';
+  var MASTER_VOLUME = 0.7;
+  var RELAY = /[?&]relay=([^&]+)/.exec(location.search);
+  RELAY = RELAY ? decodeURIComponent(RELAY[1]) : null;
+  if (!RELAY) {
+    var LOCAL = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+    RELAY = LOCAL ? 'ws://' + location.host + '/ws'
+                  : 'wss://desktop-a9unfi5.tailb30fe3.ts.net/ws';
+  }
+  var ICE = { iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ]};
+
+  var $ = function (id) { return document.getElementById(id); };
+  var barEl = $('bar');
+  var player = null, canvas = null, ws = null, pc = null, keysIn = 0;
+  var room = '', wsReady = false, extra = '';
+
+  function bar(s) { barEl.innerHTML = s; }
+  function bar_refresh(mainMsg) {
+    if (mainMsg !== undefined) extra = mainMsg;
+    var stat = pc && pc.connectionState ? pc.connectionState : '无';
+    bar('房号 <b>' + room + '</b> ｜ WebRTC: ' + stat + ' ｜ 按键 <b>' + keysIn + '</b> ｜ ' + extra);
+  }
+
+  (function () {
+    var s = 'abcdefghijkmnpqrstuvwxyz23456789', o = '';
+    for (var i = 0; i < 4; i++) o += s[Math.floor(Math.random() * s.length)];
+    var m = /[?&]room=([a-z0-9]+)/i.exec(location.search);
+    room = m ? m[1].toLowerCase() : ('bh' + o);
+    $('roomCode').textContent = room;
+  })();
+
+  /* ---------- P2 输入（与 fun-host 相同的两条通道） ---------- */
+  var KEYDEF = {
+    ArrowUp:    { key: 'ArrowUp',    code: 'ArrowUp',    keyCode: 38 },
+    ArrowDown:  { key: 'ArrowDown',  code: 'ArrowDown',  keyCode: 40 },
+    ArrowLeft:  { key: 'ArrowLeft',  code: 'ArrowLeft',  keyCode: 37 },
+    ArrowRight: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+    Numpad1:    { key: '1', code: 'Numpad1', keyCode: 97 },
+    Numpad2:    { key: '2', code: 'Numpad2', keyCode: 98 },
+    Numpad3:    { key: '3', code: 'Numpad3', keyCode: 99 },
+  };
+  function inject(type, code) {
+    if (!player) return;
+    var d = KEYDEF[code];
+    if (!d) return;
+    if (document.activeElement !== player) player.focus({ preventScroll: true });
+    window.dispatchEvent(new KeyboardEvent(type, {
+      key: d.key, code: d.code, keyCode: d.keyCode, which: d.keyCode,
+      bubbles: true, cancelable: true, composed: true,
+    }));
+  }
+  var REMOTE_NAMES = {
+    ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', ArrowUp: 'UP', ArrowDown: 'DOWN',
+    Numpad1: 'FIRE', Numpad2: 'NEXT_WEAPON', Numpad3: 'PREV_WEAPON',
+  };
+  var remoteState = { LEFT: 0, RIGHT: 0, UP: 0, DOWN: 0, FIRE: 0, NEXT_WEAPON: 0, PREV_WEAPON: 0 };
+  var swWorker = null;
+  function initRemoteChannel() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('sw.js', { scope: './' }).then(function () {
+      return navigator.serviceWorker.ready;
+    }).then(function (reg) {
+      swWorker = reg.active || reg.waiting || navigator.serviceWorker.controller;
+      if (!swWorker) swWorker = navigator.serviceWorker.controller;
+    }).catch(function () {});
+  }
+  function pushRemote() {
+    if (!swWorker) swWorker = navigator.serviceWorker.controller;
+    if (!swWorker) return;
+    try { swWorker.postMessage({ type: 'dsh-keys', keys: remoteState }); } catch (e) {}
+  }
+  function setRemote(code, down) {
+    var n = REMOTE_NAMES[code];
+    if (!n) return false;
+    remoteState[n] = down ? 1 : 0;
+    pushRemote();
+    return true;
+  }
+
+  /* ---------- 中继：信令 + 按键 ---------- */
+  function sendJSON(obj) { if (wsReady) try { ws.send(JSON.stringify({ data: obj })); } catch (e) {} }
+
+  function connect() {
+    ws = new WebSocket(RELAY);
+    ws.onopen = function () {
+      ws.send(JSON.stringify({ room: room, join: 1 }));
+      wsReady = true;
+      bar_refresh('已连上中继');
+      /* 房主是 offer 方：好友 join 进来后立刻建 PC 推 offer */
+    };
+    ws.onmessage = function (ev) {
+      if (ev.data instanceof ArrayBuffer) return;
+      var m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.sys === 'join') {
+        bar_refresh('好友进入，建立 WebRTC…');
+        setupPC();
+        return;
+      }
+      if (m.sys === 'room' && m.peers > 0) {
+        /* 我是后加入的：房里已有人在等，主动建连 */
+        bar_refresh('房内已有 ' + m.peers + ' 人，建立 WebRTC…');
+        setupPC();
+        return;
+      }
+      var d = m.data;
+      if (!d) return;
+      if (d.sdp && d.type === 'answer') {
+        if (pc) pc.setRemoteDescription({ type: 'answer', sdp: d.sdp })
+          .then(function () { bar_refresh('WebRTC 握手完成'); })
+          .catch(function (e) { bar_refresh('answer 失败: ' + e.message); });
+        return;
+      }
+      if (d.candidate) {
+        if (pc) try { pc.addIceCandidate({ candidate: d.candidate, sdpMid: d.sdpMid, sdpMLineIndex: d.sdpMLineIndex }); } catch (e) {}
+        return;
+      }
+      if (d.t === 'ping' && d.ts) { sendJSON({ t: 'pong', ts: d.ts }); return; }
+      if (d.t === 'k' && d.c) {
+        keysIn++;
+        if (!setRemote(d.c, !!d.d)) inject(d.d ? 'keydown' : 'keyup', d.c);
+      }
+    };
+    ws.onclose = function () { wsReady = false; bar_refresh('中继断开，3 秒后重连…'); setTimeout(connect, 3000); };
+  }
+
+  /* ---------- WebRTC：游戏画面作为视频轨 ---------- */
+  function setupPC() {
+    if (pc || !canvas) { if (!canvas) bar_refresh('画布未就绪，稍后重试…'); return; }
+    try {
+      var stream = canvas.captureStream(30);
+      pc = new RTCPeerConnection(ICE);
+      stream.getTracks().forEach(function (t) { pc.addTrack(t, stream); });
+      pc.onicecandidate = function (e) {
+        if (e.candidate) sendJSON({ candidate: e.candidate.candidate, sdpMid: e.candidate.sdpMid, sdpMLineIndex: e.candidate.sdpMLineIndex });
+      };
+      pc.onconnectionstatechange = function () {
+        bar_refresh();
+        if (pc && (pc.connectionState === 'failed' || pc.connectionState === 'disconnected')) {
+          bar_refresh('WebRTC 断开，5 秒后重建…');
+          try { pc.close(); } catch (e2) {}
+          pc = null;
+          setTimeout(setupPC, 5000);
+        }
+      };
+      pc.createOffer({ offerToReceiveAudio: false, offerToReceiveVideo: false }).then(function (offer) {
+        return pc.setLocalDescription(offer);
+      }).then(function () {
+        /* 等 ICE 收集一小会儿再发，减少来回 */
+        setTimeout(function () {
+          sendJSON({ type: 'offer', sdp: pc.localDescription.sdp });
+          bar_refresh('offer 已发出');
+        }, 400);
+      }).catch(function (e) { bar_refresh('offer 失败: ' + e.message); });
+    } catch (e) { bar_refresh('captureStream 失败: ' + e.message); }
+  }
+
+  function boot() {
+    initRemoteChannel();
+    connect();
+    try {
+      window.RufflePlayer.config = Object.assign({}, window.RufflePlayer.config, {
+        letterbox: 'off', quality: 'high', volume: MASTER_VOLUME,
+      });
+      var ruffle = window.RufflePlayer.newest();
+      var p = ruffle.createPlayer();
+      p.style.width = '640px'; p.style.height = '480px';
+      $('rc').appendChild(p);
+      p.load(SWF + '?v=' + Date.now()).then(function () {
+        player = p; p.tabIndex = 0; p.focus();
+        canvas = p.shadowRoot && p.shadowRoot.querySelector('canvas');
+        if (!canvas) { bar_refresh('找不到画布'); return; }
+        try { p.volume = MASTER_VOLUME; } catch (e) {}
+        return p.play();
+      }).then(function () {
+        bar_refresh('已就绪');
+        setInterval(bar_refresh, 1000);
+      }).catch(function (e) { bar_refresh('加载失败：' + (e && e.message)); });
+    } catch (e) { bar_refresh('Ruffle 启动失败：' + (e && e.message)); }
+  }
+  $('startBtn').addEventListener('click', function () { $('gate').style.display = 'none'; boot(); }, { once: true });
+
+  function forwardKey(e) {
+    if (!player) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (document.activeElement === player) return;
+    player.focus({ preventScroll: true });
+    window.dispatchEvent(new KeyboardEvent(e.type, {
+      code: e.code, key: e.key, keyCode: e.keyCode, which: e.keyCode,
+      bubbles: true, cancelable: true, composed: true,
+    }));
+    e.preventDefault();
+  }
+  addEventListener('keydown', forwardKey, true);
+  addEventListener('keyup', forwardKey, true);
+  addEventListener('pointerdown', function () { if (player) player.focus({ preventScroll: true }); }, true);
+
+  /* 房主页只给电脑用 */
+  if (matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches) {
+    document.body.innerHTML = '<div style="display:flex;height:100vh;align-items:center;justify-content:center;' +
+      'flex-direction:column;gap:10px;color:#8fa3b8;font-size:15px;text-align:center;padding:20px">' +
+      '<div style="font-size:34px">🖥️</div><b style="color:#d7e2ee">这一页是电脑（房主）用的</b>' +
+      '手机请打开「好友（WebRTC版）」页：fun2-join.html</div>';
+  }
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>盒子头 2PLAY · 好友（WebRTC版）</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; height: 100dvh; background: #07090d; color: #d7e2ee; overflow: hidden;
+    font: 14px/1.6 -apple-system, "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    touch-action: none; overscroll-behavior: none; }
+  #view { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  /* 画面适配（双刃同款）：video 全屏 contain，dvh 跟 iOS 工具栏 */
+  #rv { width: 100vw; height: 100vh; height: 100dvh; object-fit: contain; background: #000; display: block; }
+  #hud { position: fixed; left: 0; right: 0; top: 0; padding: max(5px, env(safe-area-inset-top)) 9px 5px;
+    font-family: Consolas, monospace; font-size: 11.5px; color: #8fa3b8; background: rgba(7,9,13,.8);
+    border-bottom: 1px solid #1a2532; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 30; }
+  #hud b { color: #6fd3ff; }
+
+  /* ---- 加入面板（双刃 phone.html 同款：右上角悬浮 + 可收成把手） ---- */
+  #panel {
+    position: fixed; top: max(40px, calc(env(safe-area-inset-top) + 40px)); right: 14px; width: 300px; padding: 14px 16px;
+    background: rgba(14, 18, 24, .94); border: 1px solid #232a34; border-radius: 10px;
+    box-shadow: 0 18px 50px rgba(0,0,0,.6); z-index: 40;
+  }
+  #panel h1 { font-size: 14px; font-weight: 600; color: #e8eef5; margin: 0 0 10px;
+    display: flex; align-items: center; justify-content: space-between; }
+  #collapse {
+    width: auto; margin: 0; padding: 2px 8px; font-size: 11px; line-height: 1.4;
+    background: #1b2430; color: #9fb0c2; border: 1px solid #2c3846; border-radius: 6px; cursor: pointer;
+  }
+  #panel.min { width: auto; padding: 6px; border-radius: 8px; }
+  #panel.min > *:not(#handle) { display: none !important; }
+  #handle { display: none; cursor: pointer; font-size: 12px; color: #9fb0c2; padding: 4px 10px; user-select: none; }
+  #panel.min #handle { display: block; }
+  .row { display: flex; justify-content: space-between; padding: 2px 0; font-size: 12px; }
+  .k { color: #7c8794; }
+  .v { color: #cfd6df; font-variant-numeric: tabular-nums; }
+  .ok { color: #5fd08a; } .bad { color: #e0705a; }
+  input.room {
+    width: 100%; margin-top: 10px; padding: 10px; text-align: center; letter-spacing: 3px;
+    font: 600 20px/1.2 Consolas, monospace; color: #9fd4ff;
+    background: #0b0f14; border: 1px dashed #2c3846; border-radius: 8px; outline: none;
+  }
+  #panel button {
+    width: 100%; margin-top: 8px; padding: 8px; cursor: pointer;
+    background: #1b2430; color: #d6e2ef; border: 1px solid #2c3846; border-radius: 6px; font-size: 13px;
+  }
+  #panel button:hover { background: #23303f; }
+  .hint { margin-top: 8px; font-size: 11px; color: #61707f; line-height: 1.5; }
+  code { color: #8ab4d8; }
+  #rotate { position: fixed; inset: 0; z-index: 55; background: #07090d; display: none;
+    flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #7d8fa3; }
+  @media (orientation: portrait) { #rotate { display: flex; } }
+  /* 动作键 */
+  #acts { position: fixed; right: max(12px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom)); z-index: 10000; display: flex; gap: 14px;
+    align-items: flex-end; }
+  .act { width: min(17vh, 9rem); height: min(17vh, 9rem); border-radius: 50%;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    font-weight: 700; color: #e8f3ff; touch-action: none; user-select: none;
+    background: radial-gradient(circle at 38% 30%, rgba(70,96,124,.6), rgba(30,42,56,.55) 65%);
+    border: 1px solid rgba(120,190,255,.3); box-shadow: 0 6px 16px rgba(0,0,0,.4); }
+  .act small { font-size: 11px; font-weight: 500; color: #9db8d4; margin-top: 2px; }
+  .act.hit { background: radial-gradient(circle at 38% 30%, rgba(120,200,255,.75), rgba(50,110,170,.7) 65%);
+    border-color: rgba(170,220,255,.75); }
+  #aFire { background: radial-gradient(circle at 38% 30%, rgba(190,70,70,.6), rgba(110,32,32,.55) 65%);
+    border-color: rgba(255,140,140,.35); }
+  #aFire.hit { background: radial-gradient(circle at 38% 30%, rgba(255,120,110,.8), rgba(160,50,45,.75) 65%);
+    border-color: rgba(255,170,160,.8); }
+</style>
+</head>
+<body>
+<div id="view"><video id="rv" autoplay playsinline muted></video></div>
+<div id="hud">等待画面…</div>
+
+<div id="rotate">📱 请横屏<br><small>摇杆和动作键在左右两侧，竖屏玩不了</small></div>
+
+<div id="acts">
+  <div class="act" id="aSwap">换枪<small>Weapon</small></div>
+  <div class="act" id="aFire">开火<small>Fire</small></div>
+</div>
+
+<div id="panel">
+  <h1>盒子头 2PLAY · 好友（P2）<button id="collapse">收起</button></h1>
+  <div id="handle" style="display:none">☰ 面板</div>
+  <div class="row"><span class="k">对端</span><span class="v" id="v-peer">未连接</span></div>
+  <div class="row"><span class="k">视频</span><span class="v" id="v-video">—</span></div>
+  <div class="row"><span class="k">往返</span><span class="v" id="v-rtt">-- ms</span></div>
+  <input class="room" id="room" placeholder="输入房间号" autocomplete="off" spellcheck="false">
+  <button id="go">加入</button>
+  <div class="hint">向房主要房间号（bh 开头）。<br>键盘：<code>←↑↓→</code> 移动 · <code>1</code> 开火 · <code>2</code> 换枪</div>
+</div>
+
+<script src="stick.js"></script>
+<script>
+(function () {
+  'use strict';
+  var RELAY = /[?&]relay=([^&]+)/.exec(location.search);
+  RELAY = RELAY ? decodeURIComponent(RELAY[1]) : null;
+  if (!RELAY) {
+    var LOCAL = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+    RELAY = LOCAL ? 'ws://' + location.host + '/ws'
+                  : 'wss://desktop-a9unfi5.tailb30fe3.ts.net/ws';
+  }
+  var ICE = { iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+  ]};
+
+  var $ = function (id) { return document.getElementById(id); };
+  var rv = $('rv'), hudEl = $('hud');
+  var ws = null, pc = null, room = '', wsReady = false, rtt = 0;
+  var firstVideo = true;
+
+  function hud(mainMsg) {
+    if (mainMsg) hudEl.dataset.main = mainMsg;
+    var stat = pc && pc.connectionState ? pc.connectionState : '—';
+    hudEl.innerHTML = (hudEl.dataset.main || '等待画面…') +
+      ' ｜ ' + stat + (rtt ? ' ｜ 延迟 <b>' + rtt + 'ms</b>' : '');
+  }
+
+  function sendJSON(obj) { if (wsReady) try { ws.send(JSON.stringify({ data: obj })); } catch (e) {} }
+
+  function connect(code) {
+    room = code;
+    ws = new WebSocket(RELAY);
+    hud('连接中继…');
+    ws.onopen = function () {
+      wsReady = true;
+      ws.send(JSON.stringify({ room: room, join: 1 }));
+      hud('已进入房间，等房主 offer…');
+      setInterval(function () {
+        if (ws && ws.readyState === 1) try { ws.send(JSON.stringify({ data: { t: 'ping', ts: Date.now() } })); } catch (e) {}
+      }, 3000);
+    };
+    ws.onmessage = function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      var d = m.data;
+      if (!d) return;
+      if (d.sdp && d.type === 'offer') {
+        answer(d.sdp);
+        return;
+      }
+      if (d.candidate) {
+        if (pc) try { pc.addIceCandidate({ candidate: d.candidate, sdpMid: d.sdpMid, sdpMLineIndex: d.sdpMLineIndex }); } catch (e) {}
+        return;
+      }
+      if (d.t === 'pong' && d.ts) { rtt = Date.now() - d.ts; hud(); }
+    };
+    ws.onclose = function () { wsReady = false; hud('中继断开，3 秒后重连…'); setTimeout(function () { connect(room); }, 3000); };
+  }
+
+  function answer(sdp) {
+    hud('收到 offer，应答中…');
+    try {
+      pc = new RTCPeerConnection(ICE);
+      pc.ontrack = function (e) {
+        rv.srcObject = e.streams[0];
+        rv.play().catch(function () {});
+        if (firstVideo) { firstVideo = false; hud('画面已接通 ✓'); }
+      };
+      pc.onconnectionstatechange = function () {
+        hud();
+        if (pc && pc.connectionState === 'failed') {
+          hud('WebRTC 失败，5 秒后重试…');
+          try { pc.close(); } catch (e2) {}
+          pc = null;
+        }
+      };
+      pc.setRemoteDescription({ type: 'offer', sdp: sdp }).then(function () {
+        return pc.createAnswer();
+      }).then(function (ans) {
+        return pc.setLocalDescription(ans);
+      }).then(function () {
+        /* 等 ICE 收集一小会儿，把 candidate 一起随 answer 发 */
+        setTimeout(function () {
+          sendJSON({ type: 'answer', sdp: pc.localDescription.sdp });
+          hud('answer 已发，建立连接中…');
+        }, 400);
+      }).catch(function (e) { hud('应答失败: ' + e.message); });
+    } catch (e) { hud('PC 创建失败: ' + e.message); }
+  }
+
+  function sendKey(code, down) {
+    if (ws && ws.readyState === 1) try { ws.send(JSON.stringify({ data: { t: 'k', c: code, d: down ? 1 : 0 } })); } catch (e) {}
+  }
+
+  /* 键盘（电脑好友）：方向键+小键盘1/2，数字1/2同义 */
+  var KEYMAP = { ArrowUp:1, ArrowDown:1, ArrowLeft:1, ArrowRight:1, Numpad1:1, Numpad2:1, Digit1:1, Digit2:1 };
+  addEventListener('keydown', function (e) {
+    if (!KEYMAP[e.code] || e.repeat) return;
+    e.preventDefault();
+    sendKey(e.code === 'Digit1' ? 'Numpad1' : e.code === 'Digit2' ? 'Numpad2' : e.code, true);
+  }, { passive: false });
+  addEventListener('keyup', function (e) {
+    if (!KEYMAP[e.code]) return;
+    e.preventDefault();
+    sendKey(e.code === 'Digit1' ? 'Numpad1' : e.code === 'Digit2' ? 'Numpad2' : e.code, false);
+  }, { passive: false });
+
+  /* 虚拟摇杆（双刃同款） */
+  addEventListener('keydown', function (e) {
+    if (/^Arrow/.test(e.code) && !e.repeat) sendKey(e.code, true);
+  });
+  addEventListener('keyup', function (e) {
+    if (/^Arrow/.test(e.code)) sendKey(e.code, false);
+  });
+  try { window.DEStick.mount({ deadzone: 0.2 }); } catch (e) {}
+
+  /* 动作键 */
+  function bindAct(id, code) {
+    var el = $(id), active = false;
+    function on(e) { e.preventDefault(); if (active) return; active = true; el.classList.add('hit'); sendKey(code, true);
+      if (navigator.vibrate) try { navigator.vibrate(18); } catch (x) {} }
+    function off(e) { e.preventDefault(); if (!active) return; active = false; el.classList.remove('hit'); sendKey(code, false); }
+    el.addEventListener('pointerdown', on);
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointercancel', off);
+    el.addEventListener('pointerleave', off);
+  }
+  bindAct('aFire', 'Numpad1');
+  bindAct('aSwap', 'Numpad2');
+
+  /* 电脑（有鼠标）不放触控按钮 */
+  var IS_TOUCH = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
+  if (!IS_TOUCH) {
+    var acts = document.getElementById('acts');
+    if (acts) acts.style.display = 'none';
+    try { window.DEStick.setEnabled(false, false); } catch (e) {}
+    var st = document.getElementById('de-stick');
+    if (st) st.style.display = 'none';
+    var rot = document.getElementById('rotate');
+    if (rot) rot.style.display = 'none';
+  }
+
+  $('go').addEventListener('click', function () {
+    var v = ($('room').value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (v.length < 3) { $('v-peer').textContent = '房间码太短'; $('v-peer').className = 'v bad'; return; }
+    $('panel').classList.add('min');
+    connect(v);
+  });
+  $('collapse').addEventListener('click', function () {
+    $('panel').classList.toggle('min');
+    $('handle').textContent = $('panel').classList.contains('min') ? '☰ 面板' : '收起';
+  });
+  $('handle').addEventListener('click', function () { $('collapse').click(); });
+  var q = /[?&]room=([a-z0-9]+)/i.exec(location.search);
+  if (q) {
+    $('room').value = q[1].toLowerCase();
+    $('panel').classList.add('min');
+    connect(q[1].toLowerCase());
+  }
+  setInterval(function () {
+    hud();
+    $('v-rtt').textContent = rtt ? rtt + ' ms' : '-- ms';
+    $('v-rtt').className = 'v' + (rtt && rtt < 100 ? ' ok' : rtt ? ' bad' : '');
+    $('v-peer').textContent = wsReady ? (pc && pc.connectionState === 'connected' ? '已连接 ✓' : '信令已通') : '未连接';
+    $('v-peer').className = 'v' + (wsReady ? ' ok' : '');
+    $('v-video').textContent = rv && rv.videoWidth ? rv.videoWidth + 'x' + rv.videoHeight : '—';
+  }, 500);
+})();
+</script>
+</body>
+</html>

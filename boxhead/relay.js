@@ -71,9 +71,12 @@ server.on("upgrade", (req, socket, head) => {
     if (obj && typeof obj.room === "string" && obj.join) {
       st.room = obj.room;
       if (!ROOMS.has(obj.room)) ROOMS.set(obj.room, new Set());
-      ROOMS.get(obj.room).add(ws);
-      // 告诉房里其他人「有人进来了」
+      const set = ROOMS.get(obj.room);
+      // 通知房里已有的人「有人进来了」
       broadcast(obj.room, { from: st.id, sys: "join" }, ws);
+      // 告诉新人房里已有几个人（>0 时新人可主动发起建连，解决后加入者看不到先到者的问题）
+      try { ws.sendText(JSON.stringify({ sys: "room", peers: set.size })); } catch (e2) {}
+      set.add(ws);
       return;
     }
     if (st.room) {
