@@ -367,7 +367,8 @@ $('resetsave').addEventListener('click', async () => {
     if (indexedDB.databases) {
       const dbs = await indexedDB.databases();
       for (const d of dbs) {
-        if (!d.name || !/ruffle|shared|flash/i.test(d.name)) continue;
+        /* Ruffle 的库名由 wasm 侧决定，猜不准，本域下只有这两个游戏，直接全删 */
+        if (!d.name) continue;
         await new Promise((res) => {
           const req = indexedDB.deleteDatabase(d.name);
           req.onsuccess = req.onerror = req.onblocked = () => res();
