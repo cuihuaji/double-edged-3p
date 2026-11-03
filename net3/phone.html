@@ -339,6 +339,38 @@
         setTimeout(tryConnect, 2000);
         return;
       }
+
+      /* 信令 socket 被掐掉（network / server-error / socket-error）：
+         0.peerjs.com 是公共服务器，掉线非常常见；旧逻辑直接放弃 → 永远黑屏。
+         这里把整个流程重来一遍，房号不变。 */
+      if (t === "network" || t === "server-error" || t === "socket-error" || t === "socket-closed" || t === "socket-timeout") {
+        window.__npSigRetry = (window.__npSigRetry || 0) + 1;
+        if (window.__npSigRetry <= 10) {
+          $("room-hint").textContent = "信令掉线，正在重连…（第 " + window.__npSigRetry + " 次）";
+          try { peer.destroy(); } catch (e) {}
+          setTimeout(function () {
+            try { $("btn-room").disabled = false; $("btn-room").click(); } catch (e) {}
+          }, 1200 * Math.min(window.__npSigRetry, 5));
+          return;
+        }
+      }
+
+      try {
+        peer.on("disconnected", function () {
+          try { peer.reconnect(); } catch (e) {}
+          setTimeout(function () {
+            try {
+              if (!peer || !peer.open) {
+                window.__npSigRetry = (window.__npSigRetry || 0) + 1;
+                $("room-hint").textContent = "信令断开，正在重连…（第 " + window.__npSigRetry + " 次）";
+                $("btn-room").disabled = false;
+                $("btn-room").click();
+              }
+            } catch (e) {}
+          }, 3500);
+        });
+      } catch (e) {}
+
       $("btn-room").disabled = false;
       $("btn-room").textContent = "重试";
       $("room-hint").textContent = "连接失败：" + t + "（可展开下面的手动连接码）";
@@ -979,6 +1011,7 @@
         "  t=" + (v ? (v.currentTime || 0).toFixed(1) : "-") +
         "  静音 " + (v && v.muted ? "是" : "否");
         + "  错 " + (window.__npErrType || "-") + "×" + (window.__npErrCount || 0)
+        + "  重连 " + (window.__npSigRetry || 0)
     } catch (e2) {}
   }, 1000);
 })();
@@ -987,7 +1020,7 @@
 /* 自动更新：线上 version.json 一变，旧页面自己跳到新地址。
    守卫用 URL 里的 v 和线上版本比，避免「页面比 version.json 旧」时无限重载。 */
 (function () {
-  var BUILD = '2026-11-03-13';
+  var BUILD = '2026-11-03-14';
   var u = new URL(location.href);
   var got = u.searchParams.get('v');
   if (got === BUILD) return;
