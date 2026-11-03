@@ -118,6 +118,7 @@ const codeEl = $('code'), goEl = $('go');
 let peer = null, conn = null, call = null, room = '';
 let connected = false;
 let tries = 0;
+let openTimer = null;
 const pressed = new Set();
 
 function setState(t, cls) { stEl.textContent = t; stEl.className = cls || ''; }
@@ -138,17 +139,38 @@ function connect() {
   peer = new Peer(null, PEER_OPTS);
 
   peer.on('open', () => {
-    msg('已找到信令，连接房主…');
+    msg('已找到房，连接中…');
     conn = peer.connect(room, { reliable: true });
 
     conn.on('open', () => {
       connected = true;
       tries = 0;
+      clearTimeout(openTimer);
+      openTimer = null;
       setState('已连接', 'on');
       barEl.classList.remove('idle');
       msg('');
       startPing();
     });
+
+    /* 房号能查到但一直不开：房主刷新过页面，旧 peer id 还挂在信令上，
+       或者 ICE 没打通。12 秒不开就换一个新的 Peer 重连。 */
+    clearTimeout(openTimer);
+    openTimer = setTimeout(() => {
+      if (connected) return;
+      tries++;
+      if (tries <= 5) {
+        msg('房主没应答，重连 ' + tries + '/5 …');
+        setState('重试中', 'warn');
+        try { peer.destroy(); } catch (e) {}
+        goEl.disabled = false;
+        connect();
+      } else {
+        msg('连不上：房主可能刷新过页面、房号已经变了——让他重新发一次房号');
+        setState('房号已失效', 'err');
+        goEl.disabled = false;
+      }
+    }, 12000);
 
     conn.on('data', (d) => {
       if (d && typeof d === 'object' && d.t === 'pong') onPong(d);

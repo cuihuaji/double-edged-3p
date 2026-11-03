@@ -103,6 +103,7 @@ let peer = null;
 let conn = null;
 let call = null;
 let roomId = '';
+let idRetry = 0;
 let qualityTimer = null;
 
 function setState(text, cls) {
@@ -117,8 +118,17 @@ function randChars(n) {
   for (let i = 0; i < n; i++) t += A[(Math.random() * A.length) | 0];
   return t;
 }
-roomId = 'bh' + randChars(6);
+/* 房号写进地址栏：刷新后还是同一个房间，好友手里的房号不会因为房主刷新就失效 */
+const urlRoom = (new URLSearchParams(location.search).get('room') || '').trim().toLowerCase();
+roomId = /^bh[a-z0-9]{6}$/.test(urlRoom) ? urlRoom : 'bh' + randChars(6);
 roomEl.textContent = roomId;
+try {
+  const u = new URL(location.href);
+  if (u.searchParams.get('room') !== roomId) {
+    u.searchParams.set('room', roomId);
+    history.replaceState(null, '', u.toString());
+  }
+} catch (e) {}
 
 /* ---------- 注入按键 ----------
    照抄 net3/vendor/ruffle-touch.js 里能跑通的写法：先聚焦 player，
@@ -232,7 +242,25 @@ function startPeer() {
     const t = (e && e.type) || String(e);
     console.warn('[host] peer error', e);
     if (t === 'unavailable-id') {
-      setState('房号被占用，刷新重开', 'err');
+      /* 刷新后旧连接在信令上还没释放，同一个 id 会短暂占着。等一会儿拿同一个房号重注册。 */
+      if (idRetry < 4) {
+        idRetry++;
+        setState('房号重新注册 ' + idRetry + '/4 …', 'warn');
+        setTimeout(() => { try { peer.destroy(); } catch (err) {} startPeer(); }, 1800 * idRetry);
+      } else {
+        /* 实在占着就换个新号，并把地址栏一起换掉 */
+        try { peer.destroy(); } catch (err) {}
+        roomId = 'bh' + randChars(6);
+        roomEl.textContent = roomId;
+        idRetry = 0;
+        try {
+          const u = new URL(location.href);
+          u.searchParams.set('room', roomId);
+          history.replaceState(null, '', u.toString());
+        } catch (err) {}
+        setState('房号已更新，请重新复制给好友', 'err');
+        setTimeout(startPeer, 600);
+      }
     } else {
       setState('信令错误：' + t, 'err');
     }
