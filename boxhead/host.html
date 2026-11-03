@@ -75,11 +75,19 @@ const MASTER_VOLUME = 0.7;
 const PEER_OPTS = {
   debug: 0,
   config: {
+    /* 只用 STUN 拿公网映射；多列几个是为了提高「至少有一个能返回 srflx」的概率。
+       Google 在部分网络不可达，miiwifi/bilibili/hitv 在国内通常可达，
+       cloudflare/nextcloud 走 443，穿透性更好。 */
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' },
+      { urls: 'stun:stun.miwifi.com:3478' },
+      { urls: 'stun:stun.chat.bilibili.com:3478' },
+      { urls: 'stun:stun.hitv.com:3478' },
       { urls: 'stun:global.stun.twilio.com:3478' },
+      { urls: 'stun:stun.nextcloud.com:443' },
     ],
+    iceCandidatePoolSize: 2,
   },
 };
 
@@ -475,7 +483,8 @@ addEventListener('beforeunload', () => {
   try { if (peer) peer.destroy(); } catch (e) {}
 });
 
-/* ---------- 连接诊断条（右下角，一秒刷新一次）---------- */
+
+/* ---------- 连接诊断条 v2（左下角，一秒刷新）---------- */
 (function () {
   const el = document.createElement('div');
   el.id = 'diag';
@@ -483,20 +492,54 @@ addEventListener('beforeunload', () => {
     position: 'fixed', left: '10px', bottom: '10px', zIndex: '9',
     pointerEvents: 'none', padding: '3px 8px', borderRadius: '5px',
     background: 'rgba(13,20,28,.86)', border: '1px solid #26323f',
-    color: '#6f8ba3', font: '11px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace',
+    color: '#6f8ba3', font: '11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace',
     whiteSpace: 'pre',
   });
-  document.body.appendChild(el);
-  setInterval(() => {
+  (document.body || document.documentElement).appendChild(el);
+
+  const seen = { L: {}, R: {} };
+  let hooked = null;
+
+  function hook(pc) {
+    if (!pc || hooked === pc) return;
+    hooked = pc;
+    seen.L = {}; seen.R = {};
+    pc.addEventListener('icecandidate', (e) => {
+      if (!e.candidate) return;
+      const t = (e.candidate.candidate.match(/ typ (\w+)/) || [])[1] || '?';
+      seen.L[t] = (seen.L[t] || 0) + 1;
+    });
+  }
+
+  const fmt = (o) => ['host', 'srflx', 'prflx', 'relay']
+    .filter((k) => o[k]).map((k) => k[0] + o[k]).join('') || '-';
+
+  setInterval(async () => {
     const p = (typeof peer !== 'undefined') ? peer : null;
     const c = (typeof conn !== 'undefined') ? conn : null;
     const pc = c && c.peerConnection;
-    const room = (document.getElementById('room') || {}).textContent || '-';
+    hook(pc);
+    let remote = {};
+    if (pc) {
+      try {
+        const st = await pc.getStats();
+        st.forEach((r) => {
+          if (r.type === 'remote-candidate') {
+            const t = r.candidateType || '?';
+            remote[t] = (remote[t] || 0) + 1;
+          }
+        });
+      } catch (e) {}
+    }
+    const roomEl = document.getElementById('room') || document.getElementById('code');
+    const room = roomEl ? (roomEl.textContent || roomEl.value || '-') : '-';
     el.textContent =
       '房号 ' + room +
       '  信令 ' + (p && p.open ? 'on' : 'off') +
       '  好友 ' + (c && c.open ? 'on' : 'off') +
-      '  ICE ' + (pc ? pc.iceConnectionState : '-');
+      '  ICE ' + (pc ? pc.iceConnectionState : '-') +
+      '  本地候选 ' + fmt(seen.L) +
+      '  对方候选 ' + fmt(remote);
   }, 1000);
 })();
 </script>
