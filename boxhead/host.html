@@ -242,24 +242,18 @@ function startPeer() {
     const t = (e && e.type) || String(e);
     console.warn('[host] peer error', e);
     if (t === 'unavailable-id') {
-      /* 刷新后旧连接在信令上还没释放，同一个 id 会短暂占着。等一会儿拿同一个房号重注册。 */
-      if (idRetry < 4) {
+      /* 这个号被别人占着——最常见的是自己还开着另一个房主页标签，
+         或者刚刷新、旧连接在信令上还没释放。
+         绝不换号：换号就等于把已经发给好友的房号作废。 */
+      if (idRetry < 8) {
         idRetry++;
-        setState('房号重新注册 ' + idRetry + '/4 …', 'warn');
-        setTimeout(() => { try { peer.destroy(); } catch (err) {} startPeer(); }, 1800 * idRetry);
+        setState('房号被占用 · 关掉其它房主页标签 · 重试 ' + idRetry + '/8', 'warn');
+        setTimeout(() => {
+          try { peer.destroy(); } catch (err) {}
+          startPeer();
+        }, 1500 * idRetry);
       } else {
-        /* 实在占着就换个新号，并把地址栏一起换掉 */
-        try { peer.destroy(); } catch (err) {}
-        roomId = 'bh' + randChars(6);
-        roomEl.textContent = roomId;
-        idRetry = 0;
-        try {
-          const u = new URL(location.href);
-          u.searchParams.set('room', roomId);
-          history.replaceState(null, '', u.toString());
-        } catch (err) {}
-        setState('房号已更新，请重新复制给好友', 'err');
-        setTimeout(startPeer, 600);
+        setState('房号被占用 · 关掉其它房主页标签后刷新本页', 'err');
       }
     } else {
       setState('信令错误：' + t, 'err');
@@ -267,8 +261,14 @@ function startPeer() {
   });
 
   peer.on('disconnected', () => {
+    if (!peer || peer.destroyed) return;   /* 主动 destroy 时别再拉回来占着房号 */
     setState('信令断开，重连中…', 'warn');
     try { peer.reconnect(); } catch (e) {}
+  });
+
+  /* 页面要被关掉/刷新时立刻释放房号，避免下次注册撞上自己 */
+  window.addEventListener('beforeunload', () => {
+    try { if (peer && !peer.destroyed) peer.destroy(); } catch (e) {}
   });
 }
 

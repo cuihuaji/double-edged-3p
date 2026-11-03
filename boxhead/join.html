@@ -125,7 +125,8 @@ function setState(t, cls) { stEl.textContent = t; stEl.className = cls || ''; }
 function msg(t) { msgEl.textContent = t || ''; }
 
 /* ---------- 连接 ---------- */
-function connect() {
+function connect(manual) {
+  if (manual) tries = 0;
   room = (codeEl.value || '').trim().toLowerCase();
   if (!room) { msg('先填房号'); return; }
 
@@ -199,10 +200,12 @@ function connect() {
       /* 公网信令是多实例的，偶尔查到别的实例上就没有这个房间。
          房主其实在线，直接重试几次基本都能对上。 */
       tries++;
-      if (tries <= 5) {
-        msg('房号还没对上，自动重试 ' + tries + '/5 …');
+      if (tries <= 12) {
+        /* 公网信令是多实例的，偶尔查到别的实例上就没有这个房间。
+           房主其实在线，多试十几秒基本都能对上。 */
+        msg('房号还没对上，自动重试 ' + tries + '/12 …');
         setState('重试中', 'warn');
-        setTimeout(() => { goEl.disabled = false; connect(); }, 1500);
+        setTimeout(() => { goEl.disabled = false; connect(); }, 3000);
         return;
       }
       msg('找不到这个房间，确认房主还开着页面');
@@ -263,8 +266,8 @@ function onPong(m) {
 }
 
 /* ---------- 交互 ---------- */
-goEl.onclick = connect;
-codeEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') connect(); });
+goEl.onclick = () => connect(true);
+codeEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') connect(true); });
 codeEl.addEventListener('input', () => {
   codeEl.value = codeEl.value.toLowerCase().replace(/[^a-z0-9\-]/g, '').slice(0, 10);
 });
@@ -290,7 +293,7 @@ bumpIdle();
 const q = new URLSearchParams(location.search).get('room');
 if (q) {
   codeEl.value = q.toLowerCase().slice(0, 10);
-  setTimeout(() => { if (!connected) connect(); }, 200);
+  setTimeout(() => { if (!connected) connect(true); }, 200);
 }
 
 addEventListener('beforeunload', () => { try { if (peer) peer.destroy(); } catch (e) {} });
