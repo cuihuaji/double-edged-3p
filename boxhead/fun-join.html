@@ -159,6 +159,18 @@
   bindAct('aFire', 'Numpad1');
   bindAct('aSwap', 'Numpad2');
 
+  /* 电脑（有鼠标）不放触控按钮：纯键盘玩，不挡视野 */
+  var IS_TOUCH = matchMedia('(pointer: coarse)').matches && !matchMedia('(pointer: fine)').matches;
+  if (!IS_TOUCH) {
+    var acts = document.getElementById('acts');
+    if (acts) acts.style.display = 'none';
+    try { window.DEStick.setEnabled(false, false); } catch (e) {}
+    var st = document.getElementById('de-stick');
+    if (st) st.style.display = 'none';
+    var rot = document.getElementById('rotate');
+    if (rot) rot.style.display = 'none';
+  }
+
   function connect(code) {
     room = code;
     ws = new WebSocket(RELAY);
