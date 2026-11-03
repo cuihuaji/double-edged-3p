@@ -77,7 +77,7 @@
       <div class="desc">两人各自跑一份游戏，只传按键。房主操作菜单。</div>
     </div>
     <div class="acts">
-      <a class="btn host" href="net3/host3.html?p=1">开房</a>
+      <a class="btn host" href="net3/host3.html?p=1" id="host-de">开房</a>
       <a class="btn join" href="double-edged.html">说明</a>
     </div>
   </div>
@@ -113,11 +113,24 @@
   var inp = document.getElementById('room');
   var hint = document.getElementById('hint');
 
+  /* 手机分流：整合时这块被丢了，手机被丢到桌面页 → 黑屏。
+     旧大厅（double-edged.html）一直是这么分的：手机开房走 host-phone，
+     手机加入直接进 phone.html，不经过 join3。 */
+  var isPhone = navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) < 820;
+
+  var hostDe = document.getElementById('host-de');
+  if (isPhone && hostDe) { hostDe.href = 'net3/host-phone.html?p=1'; }
+
   function go() {
     var c = (inp.value || '').trim().toLowerCase().replace(/\s+/g, '');
     if (!c) { inp.focus(); return; }
     if (/^bh/.test(c)) { location.href = 'boxhead/join.html?room=' + encodeURIComponent(c); return; }
-    if (/^de/.test(c)) { location.href = 'net3/join3.html?room=' + encodeURIComponent(c); return; }
+    if (/^de/.test(c)) {
+      location.href = isPhone
+        ? 'net3/phone.html?room=' + encodeURIComponent(c)
+        : 'net3/join3.html?room=' + encodeURIComponent(c);
+      return;
+    }
     hint.textContent = '房号要以 de 或 bh 开头';
     inp.style.borderColor = '#e2725b';
     inp.focus();
