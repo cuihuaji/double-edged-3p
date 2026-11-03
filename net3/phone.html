@@ -253,6 +253,12 @@
          * 表现是好友端一片黑、统计里 decoded 一直涨而 currentTime 停在 0.00。
          * muted 之后 Chrome 允许自动播放；再定时补一次防首次竞态。 */
         try { v.muted = true; v.setAttribute("muted", ""); } catch (e6) {}
+        try {
+          v.addEventListener("click", function () {
+            try { v.muted = false; v.removeAttribute("muted"); } catch (e) {}
+            v.play().catch(function () {});
+          });
+        } catch (e8) {}
         v.play().catch(() => {});
         try {
           const kick = setInterval(() => {
@@ -920,6 +926,38 @@
     if (boot() || ++tries > 120) return;
     setTimeout(waitPad, 100);
   })();
+})();
+
+/* ---------- 手机页状态条 ----------
+   手机上没法开控制台，卡在哪全靠这一行。 */
+(function () {
+  var d = document.createElement("div");
+  d.id = "pdiag";
+  d.style.cssText = "position:fixed;left:6px;top:6px;z-index:60;font:10px/1.45 Consolas,monospace;" +
+    "color:#9fb4c7;background:rgba(8,12,17,.74);padding:3px 7px;border-radius:5px;" +
+    "max-width:92vw;white-space:pre-wrap;pointer-events:none";
+  document.body.appendChild(d);
+  setInterval(function () {
+    var c = window.__npCall;
+    var pc = c && c.peerConnection;
+    var v = document.getElementById("rv");
+    var roomEl = document.getElementById("room");
+    var connOk = false;
+    try {
+      var all = (peer && peer.connections) || {};
+      Object.keys(all).forEach(function (k) {
+        (all[k] || []).forEach(function (x) { if (x && x.open) connOk = true; });
+      });
+    } catch (e) {}
+    d.textContent =
+      "房 " + ((roomEl && roomEl.value) || "-") +
+      "  信令 " + (peer && peer.open ? "on" : "off") +
+      "  好友 " + (connOk ? "on" : "off") +
+      "  ICE " + (pc ? pc.iceConnectionState : "-") +
+      "  画面 " + (v && v.videoWidth ? v.videoWidth + "x" + v.videoHeight : "-") +
+      "  t=" + (v ? (v.currentTime || 0).toFixed(1) : "-") +
+      "  静音 " + (v && v.muted ? "是" : "否");
+  }, 1000);
 })();
 </script>
 </body></html>
