@@ -86,6 +86,9 @@
   var setPeer = row('peer', '建自身 peer');
   var setConn = row('conn', '连接房主');
   var setIce = row('ice', 'ICE 候选');
+  var setLNA = row('lna', '本地网络权限');
+  /* 记住最后一次 LNA 结果：点「开始自检」会清空所有行，要能回填 */
+  (function () { var raw = setLNA; setLNA = function (t, c) { window.__lnaText = { t: t, c: c }; raw(t, c); }; })();
 
   var m = /[?&]room=([^&]+)/.exec(location.search);
   if (m) { try { inp.value = decodeURIComponent(m[1]).toLowerCase().trim(); } catch (e) {} }
@@ -103,6 +106,7 @@
     setSecure(location.protocol === 'https:' ? 'https ✓' : location.protocol,
       location.protocol === 'https:' ? 'ok-v' : 'bad-v');
     setUA(navigator.userAgent.slice(0, 78));
+    try { if (window.__lnaText) setLNA(window.__lnaText.t, window.__lnaText.c); } catch (e) {}
     setRTC(hasRTC ? ('支持 ✓' + (canDC ? ' · DataChannel ✓' : ' · DataChannel ✗')) : '不支持 ✗',
       hasRTC && canDC ? 'ok-v' : 'bad-v');
   }
@@ -296,6 +300,37 @@
       }, 8000);
     } catch (e) {}
   }
+
+  /* Chrome 141+ 的「本地网络访问」(Local Network Access) 权限。
+     被拒 → 局域网 WebRTC 直接连不上：信令通、房号对、就是握不上手。 */
+  (function () {
+    try {
+      if (!navigator.permissions || !navigator.permissions.query) {
+        setLNA('接口不支持（浏览器较旧）', 'mid-v');
+        return;
+      }
+      navigator.permissions.query({ name: 'local-network-access' }).then(function (st) {
+        var v = st.state;
+        if (v === 'granted') setLNA('granted ✓ 允许', 'ok-v');
+        else if (v === 'denied') setLNA('denied ✗ 被拒绝 → 这就是连不上的原因', 'bad-v');
+        else setLNA('prompt（还没问过，可能会弹窗）', 'mid-v');
+        st.onchange = function () { setLNA('变成 ' + st.state, st.state === 'granted' ? 'ok-v' : 'bad-v'); };
+      }).catch(function () {
+        setLNA('该浏览器不认识这个权限（多半还没启用在强制）', 'mid-v');
+      });
+    } catch (e) {
+      setLNA('查询异常: ' + String(e).slice(0, 30), 'mid-v');
+    }
+  })();
+
+  /* 浏览器版本，方便对比"更新前后" */
+  (function () {
+    try {
+      var ua = navigator.userAgent;
+      var m = /Chrome\/(\d+)/.exec(ua);
+      if (m && Number(m[1]) >= 141) setUA(ua.slice(0, 62) + '  [Chrome ' + m[1] + ' 有 LNA 强制]');
+    } catch (e) {}
+  })();
   setTimeout(probeLocal, 600);
 
   btn.addEventListener('click', go);
