@@ -525,6 +525,24 @@
     setInterval(poll, 300);
   })();
 </script>
+<script>
+/* 大厅/链接带 ?room= 时自动填好并加入。
+   之前 join3 完全不读这个参数，从大厅进来还要手输第二遍房号，
+   房主那边就一直是「对端没连接」。 */
+(function () {
+  var m = /[?&]room=([^&]+)/.exec(location.search);
+  if (!m) return;
+  var code = "";
+  try { code = decodeURIComponent(m[1]); } catch (e) { code = m[1]; }
+  code = code.trim().toLowerCase().replace(/\s+/g, "");
+  if (!code) return;
+  var inp = document.getElementById("room");
+  var btn = document.getElementById("btn-room");
+  if (!inp || !btn) return;
+  inp.value = code;
+  setTimeout(function () { try { btn.click(); } catch (e) {} }, 400);
+})();
+</script>
 <script src="frz.js?v=9"></script>
 </body>
 </html>
