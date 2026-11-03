@@ -174,7 +174,17 @@
 
   /* ---------- WebRTC：游戏画面作为视频轨 ---------- */
   function setupPC() {
-    if (pc || !canvas) { if (!canvas) bar_refresh('画布未就绪，稍后重试…'); return; }
+    if (pc) return;
+    if (!canvas) {
+      /* 画布还没好（Ruffle 加载中）：轮询等待，就绪后自动建连 */
+      bar_refresh('好友在等，画布加载中…');
+      if (!setupPC._wait) {
+        setupPC._wait = setInterval(function () {
+          if (canvas) { clearInterval(setupPC._wait); setupPC._wait = null; setupPC(); }
+        }, 500);
+      }
+      return;
+    }
     try {
       var stream = canvas.captureStream(30);
       pc = new RTCPeerConnection(ICE);
