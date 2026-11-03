@@ -70,9 +70,10 @@
   var RELAY = /[?&]relay=([^&]+)/.exec(location.search);
   RELAY = RELAY ? decodeURIComponent(RELAY[1]) : null;
   if (!RELAY) {
-    RELAY = (location.hostname === '127.0.0.1' || location.hostname === 'localhost')
-      ? 'ws://' + location.host + '/ws'
-      : 'wss://' + location.hostname + '/ws';
+    var LOCAL = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+    /* 本机调试直连本地；其它情况（GitHub Pages 等）一律走 Funnel 固定域名 */
+    RELAY = LOCAL ? 'ws://' + location.host + '/ws'
+                  : 'wss://desktop-a9unfi5.tailb30fe3.ts.net/ws';
   }
 
   var $ = function (id) { return document.getElementById(id); };
