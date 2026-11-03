@@ -257,6 +257,47 @@
     }
   }
 
+
+  /* ---------- 本机候选探测：页一打开就收集，不依赖连上房主 ----------
+     能看到自己出的是 .local 名字（mDNS 混淆）还是真实局域网 IP，
+     以及有没有 srflx（公网映射）/ relay（中继）。 */
+  function probeLocal() {
+    var out = { host: 0, srflx: 0, relay: 0, list: [] };
+    var PC2;
+    try { PC2 = window.RTCPeerConnection || window.webkitRTCPeerConnection; } catch (e) { return; }
+    if (!PC2) return;
+    var pc;
+    try {
+      pc = new PC2({
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun.cloudflare.com:3478' }
+        ]
+      });
+      pc.createDataChannel('p');
+      pc.onicecandidate = function (e) {
+        if (!e.candidate) {
+          var names = out.list.filter(function (x) { return /\.local/.test(x); }).length;
+          var real = out.list.filter(function (x) { return /\d+\.\d+\.\d+\.\d+/.test(x) && !/\.local/.test(x); }).length;
+          var tag = 'host ' + out.host + ' · srflx ' + out.srflx + ' · relay ' + out.relay;
+          if (names && !real && !out.srflx) tag += '  ⚠ 只有 mDNS 名字，校园网多半解析不了';
+          setIce(tag + '  ' + out.list.slice(0, 3).join(' | '), (out.srflx || real) ? 'mid-v' : 'bad-v');
+          return;
+        }
+        var c = e.candidate;
+        var t = c.type || (/typ (\w+)/.exec(c.candidate) || [])[1];
+        if (out[t] !== undefined) out[t]++;
+        if (out.list.length < 4) out.list.push(String(c.address || '?') + ':' + c.port + '/' + t);
+        setIce('host ' + out.host + ' · srflx ' + out.srflx + ' · relay ' + out.relay + '  （采集中）');
+      };
+      pc.createOffer().then(function (o) { return pc.setLocalDescription(o); });
+      setTimeout(function () {
+        if (!out.host && !out.srflx) setIce('未收集到任何候选', 'bad-v');
+      }, 8000);
+    } catch (e) {}
+  }
+  setTimeout(probeLocal, 600);
+
   btn.addEventListener('click', go);
   inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
   if (inp.value) setTimeout(go, 400);
