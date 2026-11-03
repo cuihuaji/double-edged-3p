@@ -78,6 +78,29 @@
   var role = '';           // 'A' | 'B'
   var pc = null, dc = null, es = null;
 
+  /* 分两段计时，别在对方还在输码的时候就判死：
+     ① 等对方接入：只提示，不判失败（120 秒后给指引）
+     ② 真的开始打洞（收到 offer / answer）之后：30 秒判超时 */
+  var negArmed = false;
+  function armConnectTimer() {
+    if (negArmed || !pc) return;
+    negArmed = true;
+    setTimeout(function () {
+      if (!pc || pc.connectionState === 'connected') return;
+      verdict('打洞超时 30 秒：ICE ' + pc.iceConnectionState + ' / ' + pc.connectionState +
+        '。两台设备之间没有可用路径。', 'bad');
+      setDc('未打开 ✗', 'bad-v');
+    }, 30000);
+  }
+  function waitForPeerNotice() {
+    setTimeout(function () {
+      if (!pc || pc.connectionState === 'connected' || negArmed) return;
+      verdict('还没收到对方的任何消息（这不是失败，只是还没到）。' +
+        '请确认对方：① 打开同一个网址 ② 把你给的码填进框 ③ 点「我是接收方（好友）」。', 'wait');
+      setDc('未打开（还在等对方）', 'mid-v');
+    }, 120000);
+  }
+
   function row(key, label) {
     var d = document.createElement('div');
     d.className = 'row';
@@ -233,6 +256,7 @@
       if (window.__answered) { setPeerMsg('收到 offer（已回过，忽略）', 'mid-v'); return; }
       setPeerMsg('收到 offer ✓', 'ok-v');
       window.__answered = true;
+      armConnectTimer();
       var c1 = countCands(m.sdp);
       if (!c1.real && c1.mdns) {
         setTheirs('收到 offer：host ' + c1.host + '(' + c1.mdns + ' 个是 .local) · srflx ' + c1.srflx +
@@ -249,6 +273,7 @@
     if (m.t === 'answer' && role === 'A') {
       setPeerMsg('收到 answer ✓', 'ok-v');
       window.__gotAnswer = true;
+      armConnectTimer();
       var c2 = countCands(m.sdp);
       setTheirs('收到 answer：host ' + c2.host + ' · srflx ' + c2.srflx + ' · relay ' + c2.relay +
         (c2.mdns ? '（' + c2.mdns + ' 个 .local）' : ''), c2.srflx || c2.relay ? 'mid-v' : 'bad-v');
@@ -275,6 +300,7 @@
       which === 'A' ? '你的角色：发起方（等对方输入 ' + code + ' 后点接收方）' : '你的角色：接收方（码 ' + code + '）';
 
     verdict('正在交换 SDP…', 'wait');
+    waitForPeerNotice();
     sub();
     makePc();
 
@@ -304,13 +330,6 @@
       verdict('已就位，等对方的 offer（对方点完发起方后 1~2 秒内到）…', 'wait');
     }
 
-    setTimeout(function () {
-      if (pc.connectionState !== 'connected') {
-        verdict('15 秒没连上：' + pc.iceConnectionState + ' / ' + pc.connectionState +
-          '。两台设备之间没有可用路径。', 'bad');
-        setDc('未打开 ✗', 'bad-v');
-      }
-    }, 15000);
   }
 
   document.getElementById('asA').addEventListener('click', function () { start('A'); });
