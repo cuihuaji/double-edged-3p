@@ -52,7 +52,7 @@
 </div>
 
 <div id="wrap"><div id="rc"></div></div>
-<div id="hint">房主：方向键移动 · / 射击 · . , 换枪　｜　好友：WASD 移动 · 空格射击 · E Q 换枪</div>
+<div id="hint">房主：WASD 移动 · J 射击 · K 换枪　｜　好友：方向键移动 · 小键盘 1 射击 · 小键盘 2 换枪</div>
 
 <div id="gate"><div class="t"><b>点击开始</b><span>浏览器需要一次点击才允许运行与捕捉画面</span></div></div>
 
@@ -80,10 +80,14 @@ const PEER_OPTS = {
   },
 };
 
+/* 键位已经在 SWF 里改过了（CSaveData 默认值）：
+     P1 = WASD 移动 / J 射击 / K 换枪
+     P2 = 方向键移动 / 1 射击 / 2 换枪
+   所以这一层不用再翻译，只负责把好友的按键原样注入。 */
 const KEYCODE = {
   ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39,
-  KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68,
-  Space: 32, KeyE: 69, KeyQ: 81,
+  Digit1: 49, Digit2: 50, Digit3: 51,
+  Numpad1: 97, Numpad2: 98, Numpad3: 99,
 };
 
 const $ = (id) => document.getElementById(id);

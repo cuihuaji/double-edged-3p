@@ -73,7 +73,7 @@
 <div id="join">
   <div class="box">
     <h1>盒子头3 · 双人房</h1>
-    <p class="sub">输入房主给你的房号</p>
+    <p class="sub">输入房主给你的房号 · 方向键移动 · 小键盘 1 射击 · 小键盘 2 换枪</p>
     <input id="code" maxlength="10" placeholder="bhxxxxxx" autocomplete="off" spellcheck="false">
     <button id="go">加入</button>
     <div id="msg"></div>
@@ -102,10 +102,12 @@ const PEER_OPTS = {
   },
 };
 
+/* SWF 里 P2 已经是：方向键移动 / 小键盘 1 射击 / 小键盘 2 换枪。
+   小键盘原样转发；主键盘那排 1/2/3 额外归一到小键盘，方便没有数字区的键盘。 */
 const MAP = {
-  ArrowUp: 'KeyW', ArrowDown: 'KeyS', ArrowLeft: 'KeyA', ArrowRight: 'KeyD',
-  KeyW: 'KeyW', KeyS: 'KeyS', KeyA: 'KeyA', KeyD: 'KeyD',
-  Space: 'Space', KeyE: 'KeyE', KeyQ: 'KeyQ', KeyJ: 'Space',
+  ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight',
+  Numpad1: 'Numpad1', Numpad2: 'Numpad2', Numpad3: 'Numpad3',
+  Digit1: 'Numpad1', Digit2: 'Numpad2', Digit3: 'Numpad3',
 };
 
 const $ = (id) => document.getElementById(id);
@@ -115,6 +117,7 @@ const codeEl = $('code'), goEl = $('go');
 
 let peer = null, conn = null, call = null, room = '';
 let connected = false;
+let tries = 0;
 const pressed = new Set();
 
 function setState(t, cls) { stEl.textContent = t; stEl.className = cls || ''; }
@@ -140,6 +143,7 @@ function connect() {
 
     conn.on('open', () => {
       connected = true;
+      tries = 0;
       setState('已连接', 'on');
       barEl.classList.remove('idle');
       msg('');
@@ -170,6 +174,15 @@ function connect() {
     const t = (e && e.type) || String(e);
     console.warn('[guest] peer error', e);
     if (t === 'peer-unavailable') {
+      /* 公网信令是多实例的，偶尔查到别的实例上就没有这个房间。
+         房主其实在线，直接重试几次基本都能对上。 */
+      tries++;
+      if (tries <= 5) {
+        msg('房号还没对上，自动重试 ' + tries + '/5 …');
+        setState('重试中', 'warn');
+        setTimeout(() => { goEl.disabled = false; connect(); }, 1500);
+        return;
+      }
       msg('找不到这个房间，确认房主还开着页面');
       setState('房间不存在', 'err');
     } else if (t === 'network' || t === 'server-error') {
