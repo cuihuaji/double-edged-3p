@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>盒子头 2PLAY · 中继房主</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #07090d; color: #d7e2ee;
+    font: 14px/1.6 -apple-system, "Microsoft YaHei", system-ui, sans-serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #rc { position: relative; }
+  #gate { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; background: #07090d;
+    cursor: pointer; text-align: center; padding: 20px; }
+  #gate h1 { font-size: 20px; margin: 0; letter-spacing: 1px; }
+  #gate .room { font-family: Consolas, monospace; font-size: 40px; letter-spacing: 6px; color: #6fd3ff; }
+  #gate .tip { color: #7d8fa3; font-size: 12.5px; line-height: 1.9; max-width: 520px; }
+  #gate button { padding: 14px 34px; font-size: 16px; font-weight: 600; border: 0; border-radius: 9px;
+    background: linear-gradient(180deg,#2f9a63,#1f7a4c); color: #fff; cursor: pointer; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: 5px 9px;
+    background: rgba(7,9,13,.86); border-top: 1px solid #1a2532;
+    font-family: Consolas, monospace; font-size: 11.5px; color: #8fa3b8; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  #bar b { color: #6fd3ff; font-weight: 600; }
+  #resetsave { position: fixed; right: 8px; top: 8px; z-index: 45; padding: 6px 10px; font-size: 11.5px;
+    background: rgba(40,52,68,.9); color: #9fb2c6; border: 1px solid #2a3a4d; border-radius: 7px; cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="rc"></div></div>
+<div id="bar">初始化…</div>
+<button id="resetsave">清存档</button>
+
+<div id="gate">
+  <h1>盒子头 2PLAY · 中继房主</h1>
+  <div class="room" id="roomCode">····</div>
+  <div class="tip">
+    不用打洞、不用 TURN。画面经公共 MQTT 中继传给好友，好友的按键同样经中继回来。<br>
+    <b>把这个房间码发给好友，让他在手机上打开「中继好友」页填进去。</b><br>
+    8 帧/秒 · 点击开始（需要一次点击才能出声）
+  </div>
+  <button id="startBtn">开始游戏</button>
+</div>
+
+<script src="../html5/js/ruffle-nightly/ruffle.js"></script>
+<script src="mqtt-lite.js"></script>
+<script>
+(function () {
+  'use strict';
+  var SWF = 'boxhead2play_cn.swf';
+  var MASTER_VOLUME = 0.7;
+  var BROKER = 'wss://broker.emqx.io:8084/mqtt';
+  var FPS = 8;
+  var MAX_BYTES = 11000;
+
+  var $ = function (id) { return document.getElementById(id); };
+  var barEl = $('bar');
+  var player = null, canvas = null, video = null, c2 = null, ctx2 = null;
+  var mq = null, room = '', topic = '';
+  var framesSent = 0, bytesSent = 0, keysIn = 0, q = 0.45, sizes = [];
+
+  function bar(s) { barEl.innerHTML = s; }
+
+  /* ---------- 房间码 ---------- */
+  (function () {
+    var s = 'abcdefghijkmnpqrstuvwxyz23456789', o = '';
+    for (var i = 0; i < 4; i++) o += s[Math.floor(Math.random() * s.length)];
+    var m = /[?&]room=([a-z0-9]+)/i.exec(location.search);
+    room = m ? m[1].toLowerCase() : ('bh' + o);
+    topic = 'bh3p/' + room;
+    $('roomCode').textContent = room;
+  })();
+
+  /* ---------- 注入按键（照抄 host.html 里验证过的写法） ---------- */
+  var KEYDEF = {
+    ArrowUp:    { key: 'ArrowUp',    code: 'ArrowUp',    keyCode: 38 },
+    ArrowDown:  { key: 'ArrowDown',  code: 'ArrowDown',  keyCode: 40 },
+    ArrowLeft:  { key: 'ArrowLeft',  code: 'ArrowLeft',  keyCode: 37 },
+    ArrowRight: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+    Numpad1:    { key: '1', code: 'Numpad1', keyCode: 97 },
+    Numpad2:    { key: '2', code: 'Numpad2', keyCode: 98 },
+    Numpad3:    { key: '3', code: 'Numpad3', keyCode: 99 },
+  };
+
+  function inject(type, code) {
+    if (!player) return;
+    var d = KEYDEF[code];
+    if (!d) return;
+    window.__lastInject = { type: type, code: code, at: Date.now() };
+    if (document.activeElement !== player) player.focus({ preventScroll: true });
+    window.dispatchEvent(new KeyboardEvent(type, {
+      key: d.key, code: d.code, keyCode: d.keyCode, which: d.keyCode,
+      bubbles: true, cancelable: true, composed: true,
+    }));
+  }
+
+  /* ---------- 远端输入：Service Worker 拦 dsh_in.txt ---------- */
+  var REMOTE_NAMES = {
+    ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', ArrowUp: 'UP', ArrowDown: 'DOWN',
+    Numpad1: 'FIRE', Numpad2: 'NEXT_WEAPON', Numpad3: 'PREV_WEAPON',
+  };
+  var remoteState = { LEFT: 0, RIGHT: 0, UP: 0, DOWN: 0, FIRE: 0, NEXT_WEAPON: 0, PREV_WEAPON: 0 };
+  var swWorker = null;
+
+  function initRemoteChannel() {
+    if (!('serviceWorker' in navigator)) { window.__swError = 'no serviceWorker'; return; }
+    navigator.serviceWorker.register('sw.js', { scope: './' }).then(function () {
+      return navigator.serviceWorker.ready;
+    }).then(function (reg) {
+      swWorker = reg.active || reg.waiting || navigator.serviceWorker.controller;
+      if (!swWorker) swWorker = navigator.serviceWorker.controller;
+      window.__swReady = !!swWorker;
+    }).catch(function (e) { window.__swError = String(e && e.message || e); });
+  }
+
+  function pushRemote() {
+    if (!swWorker) swWorker = navigator.serviceWorker.controller;
+    if (!swWorker) return;
+    try { swWorker.postMessage({ type: 'dsh-keys', keys: remoteState }); } catch (e) {}
+  }
+
+  function setRemote(code, down) {
+    var n = REMOTE_NAMES[code];
+    if (!n) return false;
+    remoteState[n] = down ? 1 : 0;
+    pushRemote();
+    return true;
+  }
+
+  /* ---------- MQTT ---------- */
+  function startMqtt() {
+    mq = new MqttLite(BROKER, 'h-' + room + '-' + Math.random().toString(36).slice(2, 6));
+    mq.connect().then(function () {
+      mq.subscribe(topic + '/in', function (bytes) {
+        var txt = '';
+        for (var i = 0; i < bytes.length; i++) txt += String.fromCharCode(bytes[i]);
+        var m;
+        try { m = JSON.parse(txt); } catch (e) { return; }
+        if (m.t === 'hi') { bar_refresh('好友已上线 ✓'); return; }
+        if (m.t === 'k' && m.c) {
+          keysIn++;
+          if (!setRemote(m.c, !!m.d)) inject(m.d ? 'keydown' : 'keyup', m.c);
+        }
+      });
+      mq.subscribe(topic + '/q', function (bytes) {
+        /* 好友每 2 秒报一次它收到的帧号与延迟，用来判断链路 */
+        var txt = '';
+        for (var i = 0; i < bytes.length; i++) txt += String.fromCharCode(bytes[i]);
+        try { window.__guestStat = JSON.parse(txt); } catch (e) {}
+      });
+      window.__mqReady = true;
+      bar_refresh('已接入中继 · 房号 ' + room);
+    }).catch(function (e) {
+      bar_refresh('中继连不上：' + (e && e.message));
+    });
+  }
+
+  var extra = '';
+  function bar_refresh(mainMsg) {
+    if (mainMsg !== undefined) extra = mainMsg;
+    bar('房号 <b>' + room + '</b> ｜ 已发 <b>' + framesSent + '</b> 帧 / ' +
+        Math.round(bytesSent / 1024) + ' KB ｜ 收到按键 <b>' + keysIn + '</b> ｜ 质量 ' +
+        q.toFixed(2) + ' ｜ ' + extra);
+  }
+
+  /* ---------- 画面采集 + 推帧 ---------- */
+  function startCapture() {
+    if (!canvas) return;
+    var W = canvas.width, H = canvas.height;
+    c2 = document.createElement('canvas');
+    c2.width = W; c2.height = H;
+    ctx2 = c2.getContext('2d');
+
+    try {
+      var stream = canvas.captureStream(FPS);
+      video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = stream;
+      video.play().catch(function () {});
+    } catch (e) {
+      bar_refresh('captureStream 不可用: ' + e.message);
+      return;
+    }
+
+    setInterval(function () {
+      if (!mq || !window.__mqReady || !ctx2 || !video || video.readyState < 2) return;
+      try { ctx2.drawImage(video, 0, 0, W, H); } catch (e) { return; }
+
+      c2.toBlob(function (blob) {
+        if (!blob) return;
+        blob.arrayBuffer().then(function (buf) {
+          var bytes = new Uint8Array(buf);
+          mq.publish(topic + '/v', bytes);
+          framesSent++;
+          bytesSent += bytes.length;
+          sizes.push(bytes.length);
+          if (sizes.length >= 8) {
+            var avg = sizes.reduce(function (a, b) { return a + b; }, 0) / sizes.length;
+            sizes = [];
+            if (avg > MAX_BYTES && q > 0.2) q = Math.max(0.2, q - 0.05);
+            else if (avg < MAX_BYTES * 0.55 && q < 0.6) q = Math.min(0.6, q + 0.03);
+          }
+          bar_refresh();
+        });
+      }, 'image/jpeg', q);
+    }, Math.round(1000 / FPS));
+  }
+
+  /* ---------- 启动 ---------- */
+  function boot() {
+    initRemoteChannel();
+    try {
+      window.RufflePlayer.config = Object.assign({}, window.RufflePlayer.config, {
+        letterbox: 'off', quality: 'high', volume: MASTER_VOLUME,
+      });
+      var ruffle = window.RufflePlayer.newest();
+      var p = ruffle.createPlayer();
+      p.style.width = '640px';
+      p.style.height = '480px';
+      $('rc').appendChild(p);
+
+      p.load(SWF + '?v=' + Date.now()).then(function () {
+        player = p;
+        p.tabIndex = 0;
+        p.focus();
+        canvas = p.shadowRoot && p.shadowRoot.querySelector('canvas');
+        if (!canvas) { bar_refresh('找不到画布'); return; }
+        try { p.volume = MASTER_VOLUME; } catch (e) {}
+        return p.play();
+      }).then(function () {
+        startCapture();
+        startMqtt();
+        bar_refresh('已就绪');
+      }).catch(function (e) {
+        bar_refresh('加载失败：' + (e && e.message));
+      });
+    } catch (e) {
+      bar_refresh('Ruffle 启动失败：' + (e && e.message));
+    }
+  }
+
+  /* 点画面保持焦点（第一下按键不被吞） */
+  function forwardKey(e) {
+    if (!player) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (document.activeElement === player) return;
+    player.focus({ preventScroll: true });
+    window.dispatchEvent(new KeyboardEvent(e.type, {
+      code: e.code, key: e.key, keyCode: e.keyCode, which: e.keyCode,
+      bubbles: true, cancelable: true, composed: true,
+    }));
+    e.preventDefault();
+  }
+  addEventListener('keydown', forwardKey, true);
+  addEventListener('keyup', forwardKey, true);
+  addEventListener('pointerdown', function () { if (player) player.focus({ preventScroll: true }); }, true);
+
+  $('startBtn').addEventListener('click', function () {
+    $('gate').style.display = 'none';
+    boot();
+  }, { once: true });
+
+  $('resetsave').addEventListener('click', function () {
+    if (!window.confirm('删掉存档再刷新？（键位默认值会被重写）')) return;
+    if (window.indexedDB && indexedDB.deleteDatabase) {
+      try { indexedDB.databases().then(function (list) {
+        (list || []).forEach(function (d) { if (d && d.name) indexedDB.deleteDatabase(d.name); });
+        location.reload();
+      }).catch(function () { location.reload(); }); } catch (e) { location.reload(); }
+    } else location.reload();
+  });
+
+  setInterval(function () { bar_refresh(); }, 1000);
+})();
+</script>
+</body>
+</html>

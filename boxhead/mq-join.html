@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>盒子头 2PLAY · 中继好友</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #07090d; color: #d7e2ee; overflow: hidden;
+    font: 14px/1.6 -apple-system, "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; touch-action: none; }
+  #view { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #cv { max-width: 100%; max-height: 100%; image-rendering: pixelated; background: #000; display: block; }
+  #hud { position: fixed; left: 0; right: 0; top: 0; padding: 5px 9px; font-family: Consolas, monospace;
+    font-size: 11.5px; color: #8fa3b8; background: rgba(7,9,13,.8); border-bottom: 1px solid #1a2532;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; z-index: 30; }
+  #hud b { color: #6fd3ff; }
+
+  #join { position: fixed; inset: 0; z-index: 60; background: #07090d; display: flex;
+    flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 22px; }
+  #join h1 { font-size: 19px; margin: 0; }
+  #join input { font-family: Consolas, monospace; font-size: 26px; letter-spacing: 8px; text-align: center;
+    width: 220px; padding: 12px; background: #101822; border: 1px solid #2a3a4d; border-radius: 9px;
+    color: #6fd3ff; text-transform: lowercase; }
+  #join button { padding: 14px 40px; font-size: 16px; font-weight: 600; border: 0; border-radius: 9px;
+    background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; }
+  #join .tip { color: #7d8fa3; font-size: 12.5px; text-align: center; line-height: 1.9; }
+
+  #pad { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+  .btn { position: absolute; pointer-events: auto; display: flex; align-items: center; justify-content: center;
+    border-radius: 50%; background: rgba(46,62,82,.42); border: 1px solid rgba(120,160,200,.28);
+    color: #cfe4f7; font-size: 20px; font-weight: 700; }
+  .btn.hit { background: rgba(90,170,255,.62); border-color: rgba(150,210,255,.7); }
+  #bU { width: 74px; height: 74px; left: 96px; bottom: 176px; }
+  #bD { width: 74px; height: 74px; left: 96px; bottom: 28px; }
+  #bL { width: 74px; height: 74px; left: 22px; bottom: 102px; }
+  #bR { width: 74px; height: 74px; left: 170px; bottom: 102px; }
+  #bF { width: 92px; height: 92px; right: 26px; bottom: 40px; font-size: 17px;
+    background: rgba(200,70,70,.48); border-color: rgba(255,140,140,.4); }
+  #bN { width: 74px; height: 74px; right: 30px; bottom: 156px; font-size: 15px;
+    background: rgba(70,140,200,.4); }
+</style>
+</head>
+<body>
+<div id="view"><canvas id="cv" width="320" height="240"></canvas></div>
+<div id="hud">等待画面…</div>
+
+<div id="pad">
+  <div class="btn" id="bU" data-code="ArrowUp">▲</div>
+  <div class="btn" id="bD" data-code="ArrowDown">▼</div>
+  <div class="btn" id="bL" data-code="ArrowLeft">◀</div>
+  <div class="btn" id="bR" data-code="ArrowRight">▶</div>
+  <div class="btn" id="bF" data-code="Numpad1">开火</div>
+  <div class="btn" id="bN" data-code="Numpad2">换枪</div>
+</div>
+
+<div id="join">
+  <h1>盒子头 2PLAY · 中继好友</h1>
+  <input id="room" placeholder="房间码" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button id="go">加入</button>
+  <div class="tip">填房主页面上显示的 4 位房间码（形如 bh7k2m）<br>不用打洞、不用 TURN，画面经公共中继传过来</div>
+</div>
+
+<script src="mqtt-lite.js"></script>
+<script>
+(function () {
+  'use strict';
+  var BROKER = 'wss://broker.emqx.io:8084/mqtt';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var cv = $('cv'), ctx = cv.getContext('2d');
+  var hudEl = $('hud');
+  var mq = null, room = '', topic = '';
+
+  var recv = 0, bytes = 0, lastT = 0, fps = 0, lastPayloadSize = 0;
+  var firstFrame = true;
+
+  function hud(mainMsg) {
+    if (mainMsg) hudEl.dataset.main = mainMsg;
+    hudEl.innerHTML = (hudEl.dataset.main || '等待画面…') +
+      ' ｜ 收到 <b>' + recv + '</b> 帧 ' + fps.toFixed(1) + ' fps ｜ ' +
+      Math.round(lastPayloadSize / 1024 * 10) / 10 + ' KB/帧 ｜ 累计 ' +
+      Math.round(bytes / 1024) + ' KB';
+  }
+
+  /* ---------- 收帧渲染 ---------- */
+  function onFrame(bytesArr) {
+    var blob = new Blob([bytesArr], { type: 'image/jpeg' });
+    lastPayloadSize = bytesArr.length;
+    bytes += bytesArr.length;
+    createImageBitmap(blob).then(function (bmp) {
+      if (cv.width !== bmp.width || cv.height !== bmp.height) {
+        cv.width = bmp.width;
+        cv.height = bmp.height;
+      }
+      ctx.drawImage(bmp, 0, 0);
+      bmp.close && bmp.close();
+      recv++;
+      var now = performance.now();
+      if (lastT) {
+        var inst = 1000 / Math.max(1, now - lastT);
+        fps = fps ? fps * 0.8 + inst * 0.2 : inst;
+      }
+      lastT = now;
+      if (firstFrame) {
+        firstFrame = false;
+        hud('画面已接通 ✓');
+        try { document.body.requestFullscreen && document.body.requestFullscreen(); } catch (e) {}
+      }
+      hud();
+    }).catch(function () {});
+  }
+
+  /* ---------- 发按键 ---------- */
+  function sendKey(code, down) {
+    if (!mq || !window.__mqReady) return;
+    mq.publish(topic + '/in', JSON.stringify({ t: 'k', c: code, d: down ? 1 : 0 }));
+  }
+
+  var KEYMAP = {
+    ArrowUp: 'ArrowUp', ArrowDown: 'ArrowDown', ArrowLeft: 'ArrowLeft', ArrowRight: 'ArrowRight',
+    Numpad1: 'Numpad1', Numpad2: 'Numpad2', Digit1: 'Numpad1', Digit2: 'Numpad2',
+  };
+  addEventListener('keydown', function (e) {
+    var c = KEYMAP[e.code];
+    if (!c) return;
+    e.preventDefault();
+    if (e.repeat) return;
+    sendKey(c, true);
+  }, { passive: false });
+  addEventListener('keyup', function (e) {
+    var c = KEYMAP[e.code];
+    if (!c) return;
+    e.preventDefault();
+    sendKey(c, false);
+  }, { passive: false });
+
+  /* 触屏按钮：多指同时按 */
+  Array.prototype.forEach.call(document.querySelectorAll('.btn'), function (el) {
+    var code = el.dataset.code;
+    var active = false;
+    function on(e) { e.preventDefault(); if (active) return; active = true; el.classList.add('hit'); sendKey(code, true); }
+    function off(e) { e.preventDefault(); if (!active) return; active = false; el.classList.remove('hit'); sendKey(code, false); }
+    el.addEventListener('pointerdown', on);
+    el.addEventListener('pointerup', off);
+    el.addEventListener('pointercancel', off);
+    el.addEventListener('pointerleave', off);
+  });
+
+  /* ---------- MQTT ---------- */
+  function connect(code) {
+    room = code;
+    topic = 'bh3p/' + room;
+    mq = new MqttLite(BROKER, 'g-' + room + '-' + Math.random().toString(36).slice(2, 6));
+    hud('连接中继…');
+    mq.connect().then(function () {
+      window.__mqReady = true;
+      mq.subscribe(topic + '/v', onFrame);
+      hello();
+      setInterval(hello, 3000);
+      hud('已连上中继，等房主推画面…');
+    }).catch(function (e) {
+      hud('中继连不上：' + (e && e.message));
+    });
+  }
+
+  function hello() {
+    if (!mq || !window.__mqReady) return;
+    mq.publish(topic + '/in', JSON.stringify({ t: 'hi' }));
+  }
+
+  $('go').addEventListener('click', function () {
+    var v = ($('room').value || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+    if (v.length < 3) { hud('房间码太短'); return; }
+    $('join').style.display = 'none';
+    connect(v);
+  });
+
+  var q = /[?&]room=([a-z0-9]+)/i.exec(location.search);
+  if (q) {
+    $('room').value = q[1].toLowerCase();
+    $('join').style.display = 'none';
+    connect(q[1].toLowerCase());
+  }
+
+  setInterval(function () { hud(); }, 1000);
+})();
+</script>
+</body>
+</html>
