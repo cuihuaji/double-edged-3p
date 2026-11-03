@@ -56,6 +56,41 @@
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
   ]};
+  var peerIP = null, myPort = null, injected = false, myPeerPort = null;
+
+  /* mDNS 绕行：对端浏览器把 host 候选混淆成 xxxx.local，校园网解析不了。
+     双方经中继互报 tailnet IP + 自己的 host 候选端口，然后手工注入
+     candidate:<foundation> 1 udp <prio> <peerIP> <port> typ host */
+  function myHostPorts() {
+    if (!pc || !pc.localDescription) return [];
+    var out = [];
+    var lines = pc.localDescription.sdp.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf('a=candidate:') === 0 && lines[i].indexOf(' typ host') > 0) {
+        var parts = lines[i].split(' ');
+        if (parts[4] && parts[4].indexOf('.local') > 0) out.push(parts[5]);
+      }
+    }
+    return out;
+  }
+  function injectPeer() {
+    if (injected || !pc || !peerIP) return;
+    var port = myPeerPort || 9;
+    injected = true;
+    var c = { candidate: 'candidate:842163049 1 udp 1677729535 ' + peerIP + ' ' + port + ' typ host',
+              sdpMid: '0', sdpMLineIndex: 0 };
+    pc.addIceCandidate(c).then(function () {
+      bar_refresh('已注入对端 tailnet 候选 ' + peerIP);
+    }).catch(function (e) { bar_refresh('注入候选失败: ' + e.message); });
+  }
+  function announceIP() {
+    var ports = myHostPorts();
+    if (ports.length) { myPort = ports[0]; }
+    sendJSON({ t: 'myip', ip: TAILNET_IP, port: myPort });
+    if (peerIP && myPort) injectPeer();
+  }
+  var TAILNET_IP = /[?&]tsip=([\d.]+)/.exec(location.search);
+  TAILNET_IP = TAILNET_IP ? TAILNET_IP[1] : '100.120.20.107';
 
   var $ = function (id) { return document.getElementById(id); };
   var barEl = $('bar');
@@ -159,6 +194,13 @@
           .catch(function (e) { bar_refresh('answer 失败: ' + e.message); });
         return;
       }
+      if (d.t === 'myip' && d.ip) {
+        /* 对端 tailnet IP：注入 host candidate 绕开 mDNS 混淆 */
+        peerIP = d.ip;
+        if (d.port) myPeerPort = d.port;
+        injectPeer();
+        return;
+      }
       if (d.candidate) {
         if (pc) try { pc.addIceCandidate({ candidate: d.candidate, sdpMid: d.sdpMid, sdpMLineIndex: d.sdpMLineIndex }); } catch (e) {}
         return;
@@ -207,8 +249,9 @@
         /* 等 ICE 收集一小会儿再发，减少来回 */
         setTimeout(function () {
           sendJSON({ type: 'offer', sdp: pc.localDescription.sdp });
+          announceIP();
           bar_refresh('offer 已发出');
-        }, 400);
+        }, 600);
       }).catch(function (e) { bar_refresh('offer 失败: ' + e.message); });
     } catch (e) { bar_refresh('captureStream 失败: ' + e.message); }
   }

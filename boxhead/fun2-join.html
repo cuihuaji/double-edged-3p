@@ -116,6 +116,39 @@
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
   ]};
+  var peerIP = null, myPort = null, injected = false, myPeerPort = null;
+
+  /* mDNS 绕行（与房主页对称） */
+  function myHostPorts() {
+    if (!pc || !pc.localDescription) return [];
+    var out = [];
+    var lines = pc.localDescription.sdp.split('\n');
+    for (var i = 0; i < lines.length; i++) {
+      if (lines[i].indexOf('a=candidate:') === 0 && lines[i].indexOf(' typ host') > 0) {
+        var parts = lines[i].split(' ');
+        if (parts[4] && parts[4].indexOf('.local') > 0) out.push(parts[5]);
+      }
+    }
+    return out;
+  }
+  function injectPeer() {
+    if (injected || !pc || !peerIP) return;
+    var port = myPeerPort || 9;
+    injected = true;
+    var c = { candidate: 'candidate:842163049 1 udp 1677729535 ' + peerIP + ' ' + port + ' typ host',
+              sdpMid: '0', sdpMLineIndex: 0 };
+    pc.addIceCandidate(c).then(function () {
+      hud('已注入对端 tailnet 候选 ' + peerIP);
+    }).catch(function (e) { hud('注入候选失败: ' + e.message); });
+  }
+  function announceIP() {
+    var ports = myHostPorts();
+    if (ports.length) myPort = ports[0];
+    sendJSON({ t: 'myip', ip: TAILNET_IP, port: myPort });
+    if (peerIP && myPort) injectPeer();
+  }
+  var TAILNET_IP = /[?&]tsip=([\d.]+)/.exec(location.search);
+  TAILNET_IP = TAILNET_IP ? TAILNET_IP[1] : '100.91.102.83';
 
   var $ = function (id) { return document.getElementById(id); };
   var rv = $('rv'), hudEl = $('hud');
@@ -156,6 +189,12 @@
         if (pc) try { pc.addIceCandidate({ candidate: d.candidate, sdpMid: d.sdpMid, sdpMLineIndex: d.sdpMLineIndex }); } catch (e) {}
         return;
       }
+      if (d.t === 'myip' && d.ip) {
+        peerIP = d.ip;
+        if (d.port) myPeerPort = d.port;
+        injectPeer();
+        return;
+      }
       if (d.t === 'pong' && d.ts) { rtt = Date.now() - d.ts; hud(); }
     };
     ws.onclose = function () { wsReady = false; hud('中继断开，3 秒后重连…'); setTimeout(function () { connect(room); }, 3000); };
@@ -187,6 +226,7 @@
         setTimeout(function () {
           sendJSON({ type: 'answer', sdp: pc.localDescription.sdp });
           hud('answer 已发，建立连接中…');
+        announceIP();
         }, 400);
       }).catch(function (e) { hud('应答失败: ' + e.message); });
     } catch (e) { hud('PC 创建失败: ' + e.message); }
