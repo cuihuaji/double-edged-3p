@@ -152,6 +152,46 @@ function inject(type, code) {
 window.__inject = inject;
 window.__lastInject = null;
 
+/* ---------- 远端输入：Service Worker 通道 ----------
+   Ruffle 的 AVM1 不接合成键盘事件（三种派发目标 + composed 都试过），
+   ExternalInterface.available 也是 false。唯一能进 SWF 的是 URL 加载：
+   本页把按键状态 postMessage 给 sw.js，SW 在本地拦截 dsh_in.txt 直接应答，
+   游戏那边用 loadVariables 轮询。 */
+const REMOTE_NAMES = {
+  ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', ArrowUp: 'UP', ArrowDown: 'DOWN',
+  Numpad1: 'FIRE', Numpad2: 'NEXT_WEAPON', Numpad3: 'PREV_WEAPON',
+};
+const remoteState = { LEFT: 0, RIGHT: 0, UP: 0, DOWN: 0, FIRE: 0, NEXT_WEAPON: 0, PREV_WEAPON: 0 };
+let swWorker = null;
+
+async function initRemoteChannel() {
+  if (!('serviceWorker' in navigator)) { window.__swError = 'no serviceWorker'; return; }
+  try {
+    const reg = await navigator.serviceWorker.register('sw.js', { scope: './' });
+    await navigator.serviceWorker.ready;
+    swWorker = reg.active || reg.waiting || navigator.serviceWorker.controller;
+    if (!swWorker && navigator.serviceWorker.controller) swWorker = navigator.serviceWorker.controller;
+    window.__swReady = !!swWorker;
+    if (!swWorker) setState('远端输入未就绪 · 刷新一次', 'warn');
+  } catch (e) { window.__swError = String(e && e.message || e); }
+}
+
+function pushRemote() {
+  if (!swWorker) swWorker = navigator.serviceWorker.controller;
+  if (!swWorker) return;
+  try { swWorker.postMessage({ type: 'dsh-keys', keys: remoteState }); } catch (e) {}
+}
+
+function setRemote(code, down) {
+  const n = REMOTE_NAMES[code];
+  if (!n) return false;
+  remoteState[n] = down ? 1 : 0;
+  pushRemote();
+  return true;
+}
+window.__remoteState = remoteState;
+window.__setRemote = setRemote;
+
 /* ---------- 画面质量 ----------
    WebRTC 带宽估紧时会自己降分辨率，好友看到的是一张缩小再放大的糊图。
    必须钉死 scaleResolutionDownBy=1。而且 setParameters 在协商完成前调用
@@ -234,7 +274,8 @@ function bindData(c) {
     if (!d || typeof d !== 'object') return;
     if (d.t === 'k') {
       flashKey(d.code, d.down);
-      inject(d.down ? 'keydown' : 'keyup', d.code);
+      /* 走 SW 通道进 SWF；只有映射不到的键才退回合成键盘事件 */
+      if (!setRemote(d.code, d.down)) inject(d.down ? 'keydown' : 'keyup', d.code);
     } else if (d.t === 'ping') {
       try { c.send({ t: 'pong', at: d.at }); } catch (e) {}
     }
@@ -242,6 +283,9 @@ function bindData(c) {
 
   c.on('close', () => {
     setState('好友断开 · 等重连', 'warn');
+    /* 断线时把残留的按下状态清掉，否则角色会一直朝一个方向跑 */
+    for (const k of Object.keys(remoteState)) remoteState[k] = 0;
+    pushRemote();
     if (qualityTimer) { clearInterval(qualityTimer); qualityTimer = null; }
   });
 
@@ -281,6 +325,7 @@ fitStage();
 async function boot() {
   gateEl.classList.add('gone');
   setState('加载原版…', 'warn');
+  initRemoteChannel();
 
   try {
     /* Ruffle 的缩放模式是全局配置，必须在 createPlayer 之前设。
@@ -316,6 +361,8 @@ async function boot() {
 
     await p.load(SWF + '?v=' + Date.now());
     player = p;
+    window.__traces = window.__traces || [];
+    try { p.traceObserver = (m) => { window.__traces.push(String(m)); }; } catch (e) {}
     p.tabIndex = 0;
     p.focus();
 
