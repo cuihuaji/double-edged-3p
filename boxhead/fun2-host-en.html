@@ -262,10 +262,19 @@
     try {
       window.RufflePlayer.config = Object.assign({}, window.RufflePlayer.config, {
         letterbox: 'off', quality: 'high', volume: MASTER_VOLUME,
+        scale: 'showAll', forceScale: true,
       });
       var ruffle = window.RufflePlayer.newest();
       var p = ruffle.createPlayer();
-      p.style.width = '640px'; p.style.height = '480px';
+      // 自适应窗口大小(保持 4:3),窗口变化时跟随
+      function fitStage() {
+        var w = window.innerWidth, h = window.innerHeight;
+        var scale = Math.min(w / 640, h / 480) * 0.97;
+        p.style.width = Math.floor(640 * scale) + 'px';
+        p.style.height = Math.floor(480 * scale) + 'px';
+      }
+      fitStage();
+      window.addEventListener('resize', function () { if (player) fitStage(); });
       $('rc').appendChild(p);
       p.load(SWF + '?v=' + Date.now()).then(function () {
         player = p; p.tabIndex = 0; p.focus();
