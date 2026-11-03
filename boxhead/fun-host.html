@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>盒子头 2PLAY · Funnel 房主</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: #07090d; color: #d7e2ee;
+    font: 14px/1.6 -apple-system, "Microsoft YaHei", system-ui, sans-serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #rc { position: relative; }
+  #gate { position: fixed; inset: 0; z-index: 50; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 14px; background: #07090d;
+    cursor: pointer; text-align: center; padding: 20px; }
+  #gate h1 { font-size: 20px; margin: 0; letter-spacing: 1px; }
+  #gate .room { font-family: Consolas, monospace; font-size: 40px; letter-spacing: 6px; color: #6fd3ff; }
+  #gate .tip { color: #7d8fa3; font-size: 12.5px; line-height: 1.9; max-width: 540px; }
+  #gate button { padding: 14px 34px; font-size: 16px; font-weight: 600; border: 0; border-radius: 9px;
+    background: linear-gradient(180deg,#2f9a63,#1f7a4c); color: #fff; cursor: pointer; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: 5px 9px;
+    background: rgba(7,9,13,.86); border-top: 1px solid #1a2532;
+    font-family: Consolas, monospace; font-size: 11.5px; color: #8fa3b8; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; }
+  #bar b { color: #6fd3ff; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="stage"><div id="rc"></div></div>
+<div id="bar">初始化…</div>
+
+<div id="gate">
+  <h1>盒子头 2PLAY · Funnel 房主</h1>
+  <div class="room" id="roomCode">····</div>
+  <div class="tip">
+    走你电脑自己的中继（Tailscale Funnel），延迟最低、带宽不限。<br>
+    <b>把房间码发给好友，好友打开「Funnel 好友」页填码加入。</b><br>
+    15 帧/秒 · 点击开始（需要一次点击才能出声）
+  </div>
+  <button id="startBtn">开始游戏</button>
+</div>
+
+<script src="../html5/js/ruffle-nightly/ruffle.js"></script>
+<script>
+(function () {
+  'use strict';
+  var SWF = 'boxhead2play_cn.swf';
+  var MASTER_VOLUME = 0.7;
+  /* 中继地址：优先同源（本机直连），否则走 Funnel 公网地址 */
+  var RELAY = /[?&]relay=([^&]+)/.exec(location.search);
+  RELAY = RELAY ? decodeURIComponent(RELAY[1]) : 'wss://desktop-a9unfi5.tailb30fe3.ts.net/ws';
+  var FPS = 15;                 /* Funnel 带宽不限，比 MQTT 版提帧率 */
+  var SCALE = 0.85;
+  var MAX_BYTES = 14000;        /* 单帧预算，自适应质量 */
+  var MIME = 'image/jpeg';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var barEl = $('bar');
+  var player = null, canvas = null, video = null, c2 = null, ctx2 = null;
+  var ws = null, room = '', framesSent = 0, bytesSent = 0, keysIn = 0, q = 0.5, sizes = [];
+
+  function bar(s) { barEl.innerHTML = s; }
+
+  /* ---------- 房间码 ---------- */
+  (function () {
+    var s = 'abcdefghijkmnpqrstuvwxyz23456789', o = '';
+    for (var i = 0; i < 4; i++) o += s[Math.floor(Math.random() * s.length)];
+    var m = /[?&]room=([a-z0-9]+)/i.exec(location.search);
+    room = m ? m[1].toLowerCase() : ('bh' + o);
+    $('roomCode').textContent = room;
+  })();
+
+  /* ---------- 注入按键 ---------- */
+  var KEYDEF = {
+    ArrowUp:    { key: 'ArrowUp',    code: 'ArrowUp',    keyCode: 38 },
+    ArrowDown:  { key: 'ArrowDown',  code: 'ArrowDown',  keyCode: 40 },
+    ArrowLeft:  { key: 'ArrowLeft',  code: 'ArrowLeft',  keyCode: 37 },
+    ArrowRight: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
+    Numpad1:    { key: '1', code: 'Numpad1', keyCode: 97 },
+    Numpad2:    { key: '2', code: 'Numpad2', keyCode: 98 },
+    Numpad3:    { key: '3', code: 'Numpad3', keyCode: 99 },
+  };
+  function inject(type, code) {
+    if (!player) return;
+    var d = KEYDEF[code];
+    if (!d) return;
+    if (document.activeElement !== player) player.focus({ preventScroll: true });
+    window.dispatchEvent(new KeyboardEvent(type, {
+      key: d.key, code: d.code, keyCode: d.keyCode, which: d.keyCode,
+      bubbles: true, cancelable: true, composed: true,
+    }));
+  }
+
+  /* ---------- 远端输入：SW 拦 dsh_in.txt ---------- */
+  var REMOTE_NAMES = {
+    ArrowLeft: 'LEFT', ArrowRight: 'RIGHT', ArrowUp: 'UP', ArrowDown: 'DOWN',
+    Numpad1: 'FIRE', Numpad2: 'NEXT_WEAPON', Numpad3: 'PREV_WEAPON',
+  };
+  var remoteState = { LEFT: 0, RIGHT: 0, UP: 0, DOWN: 0, FIRE: 0, NEXT_WEAPON: 0, PREV_WEAPON: 0 };
+  var swWorker = null;
+  function initRemoteChannel() {
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('sw.js', { scope: './' }).then(function () {
+      return navigator.serviceWorker.ready;
+    }).then(function (reg) {
+      swWorker = reg.active || reg.waiting || navigator.serviceWorker.controller;
+      if (!swWorker) swWorker = navigator.serviceWorker.controller;
+    }).catch(function () {});
+  }
+  function pushRemote() {
+    if (!swWorker) swWorker = navigator.serviceWorker.controller;
+    if (!swWorker) return;
+    try { swWorker.postMessage({ type: 'dsh-keys', keys: remoteState }); } catch (e) {}
+  }
+  function setRemote(code, down) {
+    var n = REMOTE_NAMES[code];
+    if (!n) return false;
+    remoteState[n] = down ? 1 : 0;
+    pushRemote();
+    return true;
+  }
+
+  /* ---------- WebSocket 中继 ---------- */
+  var wsReady = false, extra = '';
+  function connect() {
+    ws = new WebSocket(RELAY);
+    ws.binaryType = 'arraybuffer';
+    ws.onopen = function () {
+      ws.send(JSON.stringify({ room: room, join: 1 }));
+      wsReady = true;
+      bar_refresh('已连上中继 · 房号 ' + room);
+    };
+    ws.onmessage = function (ev) {
+      if (ev.data instanceof ArrayBuffer) return;        // 房主只收文本
+      var m;
+      try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m.sys === 'join') { bar_refresh('好友已上线 ✓'); return; }
+      if (m.sys === 'leave') { bar_refresh('好友已离开'); return; }
+      var d = m.data;
+      if (d && d.t === 'k' && d.c) {
+        keysIn++;
+        if (!setRemote(d.c, !!d.d)) inject(d.d ? 'keydown' : 'keyup', d.c);
+      }
+    };
+    ws.onclose = function () { wsReady = false; bar_refresh('中继断开，3 秒后重连…'); setTimeout(connect, 3000); };
+    ws.onerror = function () {};
+  }
+  function sendJSON(obj) { if (wsReady) try { ws.send(JSON.stringify(obj)); } catch (e) {} }
+
+  function bar_refresh(mainMsg) {
+    if (mainMsg !== undefined) extra = mainMsg;
+    bar('房号 <b>' + room + '</b> ｜ 已发 <b>' + framesSent + '</b> 帧 / ' +
+        Math.round(bytesSent / 1024) + ' KB ｜ 按键 <b>' + keysIn + '</b> ｜ ' +
+        q.toFixed(2) + ' ' + MIME.split('/')[1] + ' ' + (c2 ? c2.width + 'x' + c2.height : '-') +
+        ' ｜ ' + extra);
+  }
+
+  /* ---------- 画面采集 + 推帧 ---------- */
+  function startCapture() {
+    if (!canvas) return;
+    var W = Math.round(canvas.width * SCALE);
+    var H = Math.round(canvas.height * SCALE);
+    c2 = document.createElement('canvas');
+    c2.width = W; c2.height = H;
+    ctx2 = c2.getContext('2d');
+    try {
+      var probe = document.createElement('canvas');
+      probe.width = probe.height = 1;
+      if (probe.toDataURL('image/webp').indexOf('data:image/webp') === 0) MIME = 'image/webp';
+    } catch (e) {}
+
+    try {
+      var stream = canvas.captureStream(FPS);
+      video = document.createElement('video');
+      video.muted = true; video.playsInline = true;
+      video.srcObject = stream;
+      video.play().catch(function () {});
+    } catch (e) { bar_refresh('captureStream 不可用'); return; }
+
+    var busy = false, lastPub = 0, minGap = Math.round(1000 / FPS) - 12;
+    setInterval(function () {
+      if (busy || !wsReady) return;
+      var now = Date.now();
+      if (now - lastPub < minGap) return;
+      if (!ctx2 || !video || video.readyState < 2) return;
+      try { ctx2.drawImage(video, 0, 0, W, H); } catch (e) { return; }
+      lastPub = now; busy = true;
+      c2.toBlob(function (blob) {
+        if (!blob) { busy = false; return; }
+        blob.arrayBuffer().then(function (buf) {
+          var bytes = new Uint8Array(buf);
+          if (wsReady) try { ws.send(bytes); } catch (e) {}
+          framesSent++; bytesSent += bytes.length;
+          sizes.push(bytes.length);
+          if (sizes.length >= 6) {
+            var avg = sizes.reduce(function (a, b) { return a + b; }, 0) / sizes.length;
+            sizes = [];
+            if (avg > MAX_BYTES && q > 0.3) q = Math.max(0.3, q - 0.04);
+            else if (avg < MAX_BYTES * 0.7 && q < 0.7) q = Math.min(0.7, q + 0.03);
+          }
+          bar_refresh();
+        }).catch(function () {}).then(function () { busy = false; });
+      }, MIME, q);
+    }, Math.round(1000 / FPS / 2));
+  }
+
+  /* ---------- 启动 ---------- */
+  function boot() {
+    initRemoteChannel();
+    connect();
+    try {
+      window.RufflePlayer.config = Object.assign({}, window.RufflePlayer.config, {
+        letterbox: 'off', quality: 'high', volume: MASTER_VOLUME,
+      });
+      var ruffle = window.RufflePlayer.newest();
+      var p = ruffle.createPlayer();
+      p.style.width = '640px'; p.style.height = '480px';
+      $('rc').appendChild(p);
+      p.load(SWF + '?v=' + Date.now()).then(function () {
+        player = p; p.tabIndex = 0; p.focus();
+        canvas = p.shadowRoot && p.shadowRoot.querySelector('canvas');
+        if (!canvas) { bar_refresh('找不到画布'); return; }
+        try { p.volume = MASTER_VOLUME; } catch (e) {}
+        return p.play();
+      }).then(function () {
+        startCapture();
+        bar_refresh('已就绪');
+      }).catch(function (e) { bar_refresh('加载失败：' + (e && e.message)); });
+    } catch (e) { bar_refresh('Ruffle 启动失败：' + (e && e.message)); }
+  }
+  $('startBtn').addEventListener('click', function () { $('gate').style.display = 'none'; boot(); }, { once: true });
+
+  function forwardKey(e) {
+    if (!player) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    if (document.activeElement === player) return;
+    player.focus({ preventScroll: true });
+    window.dispatchEvent(new KeyboardEvent(e.type, {
+      code: e.code, key: e.key, keyCode: e.keyCode, which: e.keyCode,
+      bubbles: true, cancelable: true, composed: true,
+    }));
+    e.preventDefault();
+  }
+  addEventListener('keydown', forwardKey, true);
+  addEventListener('keyup', forwardKey, true);
+  addEventListener('pointerdown', function () { if (player) player.focus({ preventScroll: true }); }, true);
+  setInterval(function () { bar_refresh(); }, 1000);
+})();
+</script>
+</body>
+</html>
