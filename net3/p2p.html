@@ -95,6 +95,8 @@
   var setSig = row('sig', '中转通道');
   var setMine = row('mine', '我的候选');
   var setTheirs = row('theirs', '对方候选');
+  var setPeerMsg = row('peer', '对端消息');
+  var setErr = row('err', '候选错误');
   var setIce = row('ice', 'ICE 状态');
   var setPair = row('pair', '选中的候选对');
   var setDc = row('dc', '数据通道');
@@ -130,7 +132,7 @@
         try {
           var wrap = JSON.parse(ev.data);
           var m = JSON.parse(wrap.message);
-          if (m.to === role) return;      // 忽略自己发的
+          if (m.from === role) return;      // 忽略自己发的（之前误写成 m.to，等于把发给自己的消息也丢了）
           onMsg(m);
         } catch (e) {}
       };
@@ -179,7 +181,8 @@
       }
     };
     pc.onicecandidateerror = function (e) {
-      setTheirs('候选错误 ' + e.errorCode + ' ' + (e.url || '').slice(0, 40), 'mid-v');
+      /* 701 之类只是某个 STUN 问不通，不影响整体，单独一行免得盖住真信息 */
+      setErr(e.errorCode + ' ' + String(e.url || '').slice(0, 40) + '（不影响）', 'mid-v');
     };
   }
 
@@ -227,7 +230,9 @@
 
   function onMsg(m) {
     if (m.t === 'offer' && role === 'B') {
-      setTheirs('收到 offer：' + JSON.stringify(countCands(m.sdp)));
+      if (window.__answered) { setPeerMsg('收到 offer（已回过，忽略）', 'mid-v'); return; }
+      setPeerMsg('收到 offer ✓', 'ok-v');
+      window.__answered = true;
       var c1 = countCands(m.sdp);
       if (!c1.real && c1.mdns) {
         setTheirs('收到 offer：host ' + c1.host + '(' + c1.mdns + ' 个是 .local) · srflx ' + c1.srflx +
@@ -242,6 +247,8 @@
         .catch(function (e) { verdict('回发失败: ' + String(e).slice(0, 50), 'bad'); });
     }
     if (m.t === 'answer' && role === 'A') {
+      setPeerMsg('收到 answer ✓', 'ok-v');
+      window.__gotAnswer = true;
       var c2 = countCands(m.sdp);
       setTheirs('收到 answer：host ' + c2.host + ' · srflx ' + c2.srflx + ' · relay ' + c2.relay +
         (c2.mdns ? '（' + c2.mdns + ' 个 .local）' : ''), c2.srflx || c2.relay ? 'mid-v' : 'bad-v');
@@ -279,8 +286,18 @@
         pc.createOffer()
           .then(function (o) { return pc.setLocalDescription(o); })
           .then(function () { return waitGather(pc); })
-          .then(function () { return pub({ t: 'offer', from: 'A', to: 'B', sdp: pc.localDescription.sdp }); })
-          .then(function () { setSig('offer 已发出 ✓', 'ok-v'); verdict('offer 已发出，等对方回 answer…', 'wait'); })
+          .then(function () {
+            var sent = 0;
+            function sendOnce() {
+              if (sent >= 6 || window.__gotAnswer) return;
+              sent++;
+              pub({ t: 'offer', from: 'A', to: 'B', sdp: pc.localDescription.sdp });
+              setSig('offer 已发出 ' + sent + ' 次 ✓', 'ok-v');
+              verdict('offer 已发出（第 ' + sent + ' 次），等对方回 answer…', 'wait');
+              setTimeout(sendOnce, 3000);
+            }
+            sendOnce();
+          })
           .catch(function (e) { verdict('发 offer 失败: ' + String(e).slice(0, 50), 'bad'); });
       }, 1200);
     } else {
