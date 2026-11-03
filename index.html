@@ -3,161 +3,153 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-<title>联机大厅</title>
+<title>绝地双刃 · 双人联机</title>
 <style>
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
-    background: radial-gradient(circle at 50% 25%, #1c2733 0%, #0b0f14 70%);
+    background: radial-gradient(circle at 50% 30%, #1c2733 0%, #0b0f14 70%);
     color: #e8eef6; font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
   }
-  .wrap { width: 640px; max-width: 92vw; padding: 34px 28px 28px; }
-  h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: 2px; }
+  .wrap { width: 620px; max-width: 92vw; padding: 34px 30px 26px; }
+  h1 { margin: 0 0 6px; font-size: 26px; letter-spacing: 2px; }
   .sub { color: #8fa3b8; font-size: 13px; line-height: 1.7; margin-bottom: 22px; }
-
-  .game {
-    display: flex; align-items: center; gap: 16px;
-    padding: 16px 18px; margin-bottom: 14px; border-radius: 13px;
-    background: #16202b; border: 1px solid #263545;
+  .cards { display: flex; gap: 14px; }
+  .card {
+    flex: 1; display: block; padding: 20px 16px; border-radius: 12px; text-decoration: none;
+    background: #16202b; border: 1px solid #263545; color: #e8eef6;
+    transition: .15s; text-align: center;
   }
-  .game .meta { flex: 1; min-width: 0; }
-  .game .name { font-size: 17px; font-weight: 700; margin-bottom: 4px; }
-  .game .desc { font-size: 12px; color: #8fa3b8; line-height: 1.6; }
-  .game .tag {
-    display: inline-block; margin-left: 7px; padding: 1px 7px; border-radius: 5px;
-    font-size: 10.5px; font-weight: 400; vertical-align: 2px;
-    background: #223040; color: #8fa3b8; letter-spacing: .5px;
+  .card:hover { background: #1d2a38; border-color: #3f5b78; transform: translateY(-2px); }
+  .card b { display: block; font-size: 17px; margin-bottom: 6px; }
+  .card span { font-size: 12px; color: #8fa3b8; line-height: 1.6; }
+  .host b { color: #ffd166; }
+  .join b { color: #6fd3ff; }
+  table { width: 100%; border-collapse: collapse; margin-top: 22px; font-size: 13px; }
+  th, td { padding: 8px 6px; text-align: center; border-top: 1px solid #1e2b38; }
+  th { color: #8fa3b8; font-weight: 400; font-size: 12px; }
+  td:first-child, th:first-child { text-align: left; }
+  kbd {
+    background: #223040; border: 1px solid #33475c; border-radius: 4px;
+    padding: 1px 6px; font-family: Consolas, monospace; font-size: 12px;
   }
-  .game .acts { display: flex; flex-direction: column; gap: 7px; flex: 0 0 auto; }
-  .btn {
-    display: block; min-width: 92px; padding: 9px 14px; border-radius: 8px; text-align: center;
-    text-decoration: none; font-size: 13px; border: 1px solid transparent; cursor: pointer;
-    font-family: inherit; transition: .15s;
-  }
-  .btn.host { background: linear-gradient(180deg,#2f9a63,#1f7a4c); color: #fff; }
-  .btn.host:hover { filter: brightness(1.12); }
-  .btn.join { background: #1d2a38; border-color: #3f5b78; color: #cfe0f0; }
-  .btn.join:hover { background: #24334a; border-color: #6fd3ff; }
-
-  #de b { color: #ffd166; }
-  #bh b { color: #ff8a65; }
-
-  .joinbox { margin-top: 24px; padding: 16px 18px; border-radius: 12px;
-    background: #121a24; border: 1px solid #223040; }
-  .joinbox .t { font-size: 12.5px; color: #8fa3b8; margin-bottom: 10px; }
-  .row { display: flex; gap: 9px; }
-  #room {
-    flex: 1; padding: 11px 13px; border-radius: 8px; border: 1px solid #33475c;
-    background: #0d151d; color: #e8eef6; font: 15px/1 Consolas, monospace;
-    letter-spacing: 1px; outline: none;
-  }
-  #room:focus { border-color: #6fd3ff; }
-  #goj { padding: 11px 20px; border-radius: 8px; border: 0; cursor: pointer;
-    background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; font: 600 14px/1 inherit; }
-  #goj:active { transform: translateY(1px); }
-  #hint { margin-top: 9px; font-size: 12px; color: #e2a08b; min-height: 17px; }
-  .note { margin-top: 18px; font-size: 12px; color: #6b8299; line-height: 1.85; }
+  .note { margin-top: 18px; font-size: 12px; color: #7b8fa3; line-height: 1.8; }
   .note b { color: #ffb4a2; }
-
-  @media (max-width: 520px) {
-    .game { flex-direction: column; align-items: stretch; }
-    .game .acts { flex-direction: row; }
-    .btn { flex: 1; }
+  /* ===== 手机大厅：触屏小屏走这套，电脑不受影响 ===== */
+  #mobile-lobby { display: none; }
+  html.mob #mobile-lobby { display: block; }
+  html.mob #desk-lobby { display: none !important; }
+  html.mob .wrap { padding: 24px 18px 20px; }
+  html.mob h1 { font-size: 21px; letter-spacing: 1px; }
+  #mobile-lobby .big {
+    width: 100%; padding: 15px 14px; font-size: 18px; letter-spacing: 2px; text-align: center;
+    background: #16202b; border: 1px solid #35485c; border-radius: 10px; color: #e8eef6;
+    font-family: Consolas, monospace; outline: none;
   }
-</style>
+  #mobile-lobby .big:focus { border-color: #6fd3ff; }
+  #mobile-lobby .go {
+    width: 100%; margin-top: 12px; padding: 15px; font-size: 17px; font-weight: 600; letter-spacing: 2px;
+    background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; border: 0; border-radius: 10px;
+  }
+  #mobile-lobby .go:active { transform: translateY(1px); }
+  #mobile-lobby .tip { margin-top: 14px; font-size: 12px; color: #8fa3b8; line-height: 1.9; }
+  #mobile-lobby .tip b { color: #ffd166; }
+  #mobile-lobby .desk-link { display: block; margin-top: 16px; font-size: 12px; color: #6b8299; }
+  #mobile-lobby .host { background: linear-gradient(180deg,#2f9a63,#1f7a4c); }
+  #mobile-lobby .or { margin: 18px 0 12px; text-align: center; font-size: 12px; color: #5d6b7a; letter-spacing: 3px; }
+  #mobile-lobby .sub2 { margin-top: 10px; font-size: 12.5px; color: #8fa3b8; line-height: 1.7; }
+  #mobile-lobby .alt3 { display: block; margin-top: 10px; font-size: 12px; color: #6fd3ff; text-decoration: none; }</style>
 </head>
 <body>
 <div class="wrap">
-  <h1>联机大厅</h1>
-  <div class="sub">选择游戏开房，或填入好友给你的房号加入。房号前缀就是游戏：<b style="color:#ffd166">de</b> 双刃，<b style="color:#ff8a65">bh</b> Boxhead。</div>
+  <div id="mobile-lobby">
+    <h1>绝地双刃 · 手机手柄</h1>
+    <div class="sub">手机也能当房主：这台手机跑游戏，好友看你的画面一起打。或者填房号加入别人的房间。</div>
+    <button class="go host" id="m-host">我来开房（这台手机当 P1）</button>
+    <div class="sub2">开好房把房号发给好友，对方在电脑或手机上打开本页面填房号就能进。<br>手机开房 = 你玩 P1（←↑↓→ 移动，攻 / 跳，两个同按 = 必杀），菜单也由你点。</div>
+    <a class="alt3" href="net3/host-phone.html?p=2" id="m-host3">用手机当房主手柄？开手机房 →</a>
+    <div class="or">— 或者加入别人的房间 —</div>
+    <input class="big" id="m-room" placeholder="房间号（de 开头）" autocomplete="off" autocapitalize="off" spellcheck="false" />
+    <button class="go" id="m-go">加入房间</button>
+    <div class="tip">
+      左手十字方向键 · 右手 <b>攻</b> / <b>跳</b> · 两个同按＝必杀<br>
+      右上 ⚙️ 调手柄大小和透明度，👁 收起手柄看画面
+    </div>
+    <a class="desk-link" href="index.html?web=1">用电脑打开 → 房主 / 好友入口</a>
+    <a class="alt3" href="boxhead/join.html">盒子头 2PLAY → 手机加入</a>
+  </div>
+  <div id="desk-lobby">  <h1>绝地双刃 · 联机大厅</h1>
+  <div class="sub">两个人各自跑一份游戏，网络上只传按键。双方都先双击 <b>启动.bat</b>，再打开这个页面。</div>
 
-  <div class="game" id="de">
-    <div class="meta">
-      <div class="name">绝地双刃<span class="tag">双人 / 三人</span></div>
-      <div class="desc">两人各自跑一份游戏，只传按键。房主操作菜单。</div>
-    </div>
-    <div class="acts">
-      <a class="btn host" href="net3/host3.html?p=1" id="host-de">开房</a>
-      <a class="btn join" href="double-edged.html">说明</a>
-    </div>
+  <div class="cards">
+    <a class="card host" href="net3/host3.html?p=1">
+      <b>我是房主（双人）</b>
+      <span>点进来后开房<br>把房号发给 1 位好友即开局</span>
+    </a>
+    <a class="card join" href="net3/join3.html">
+      <b>我是好友</b>
+      <span>点进来后<br>输入房主给你的房号</span>
+    </a>
+    <a class="card host" href="net3/host3.html" style="background:rgba(60,80,110,.25)">
+      <b>我是房主</b>
+      <span>点进来后开房<br>等好友连上即可开局</span>
+    </a>
+    <a class="card host" href="boxhead/host.html" style="background:rgba(60,110,80,.25)">
+      <b>盒子头 2PLAY · 房主</b>
+      <span>Ruffle 跑原版 SWF<br>画面推给好友</span>
+    </a>
+    <a class="card join" href="boxhead/join.html" style="background:rgba(60,110,80,.15)">
+      <b>盒子头 2PLAY · 好友</b>
+      <span>填房主的 bh 房号<br>看房主画面一起打</span>
+    </a>
   </div>
 
-  <div class="game" id="bh">
-    <div class="meta">
-      <div class="name">盒子头3 · 双人房<span class="tag">汉化版</span></div>
-      <div class="desc">Ruffle 直接跑原版 SWF（晓之车汉化）。房主 P1：WASD 移动 · J 射击 · K 换枪；好友 P2：方向键移动 · 小键盘 1 射击 · 小键盘 2 换枪。</div>
-    </div>
-    <div class="acts">
-      <a class="btn host" href="boxhead/host.html">开房</a>
-      <a class="btn join" href="boxhead/join.html">好友加入</a>
-    </div>
-  </div>
-
-  <div class="joinbox">
-    <div class="t">已有房号？直接进</div>
-    <div class="row">
-      <input id="room" placeholder="de… 或 bh…" autocomplete="off" autocapitalize="off" spellcheck="false">
-      <button id="goj">加入</button>
-    </div>
-    <div id="hint"></div>
-  </div>
+  <table>
+    <tr><th>角色</th><th>移动</th><th>攻击</th><th>跳跃</th></tr>
+    <tr><td>P1 房主</td><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td><kbd>J</kbd></td><td><kbd>K</kbd></td></tr>
+    <tr><td>P2 好友</td><td><kbd>←</kbd><kbd>↑</kbd><kbd>↓</kbd><kbd>→</kbd></td><td><kbd>N</kbd></td><td><kbd>M</kbd></td></tr>
+  </table>
 
   <div class="note">
-    两边都要能访问 <b>0.peerjs.com</b>（信令），视频走 P2P。<br>
-    打洞失败时连不上，同一局域网或走 Tailscale 最稳。
+    菜单（PLAY / 选人数 / 选地图）<b>只有房主能操作</b>，好友等房主开局。<br>
+    从本机 <b>http://localhost:8740/</b> 打开即可；界面锁已拆除，局域网 IP / 公网也能直接开（直接双击 html 文件因 file:// 协议仍无法加载资源，需经本服务）。
+  </div>
   </div>
 </div>
-
 <script>
-(function () {
-  var inp = document.getElementById('room');
-  var hint = document.getElementById('hint');
-
-  /* 手机分流：整合时这块被丢了，手机被丢到桌面页 → 黑屏。
-     旧大厅（double-edged.html）一直是这么分的：手机开房走 host-phone，
-     手机加入直接进 phone.html，不经过 join3。 */
-  var isPhone = navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) < 820;
-
-  var hostDe = document.getElementById('host-de');
-  if (isPhone && hostDe) { hostDe.href = 'net3/host-phone.html?p=1'; }
-
-  function go() {
-    var c = (inp.value || '').trim().toLowerCase().replace(/\s+/g, '');
-    if (!c) { inp.focus(); return; }
-    if (/^bh/.test(c)) { location.href = 'boxhead/join.html?room=' + encodeURIComponent(c); return; }
-    if (/^de/.test(c)) {
-      location.href = isPhone
-        ? 'net3/phone.html?room=' + encodeURIComponent(c)
-        : 'net3/join3.html?room=' + encodeURIComponent(c);
-      return;
+  /* 手机进大厅：换成「填房号 → 手机手柄页」；电脑保持原样（?web=1 可强制电脑版） */
+  (function () {
+    var ua = navigator.userAgent;
+    var mobile = /Android|iPhone|iPad|iPod|Windows Phone|Mobile/i.test(ua) ||
+                 (navigator.maxTouchPoints > 0 && Math.min(screen.width, screen.height) < 820);
+    if (!mobile || /[?&]web=1/.test(location.search)) return;
+    document.documentElement.className += " mob";
+    var go = document.getElementById("m-go"), inp = document.getElementById("m-room");
+    function enter() {
+      var c = (inp.value || "").trim().toLowerCase().replace(/\s+/g, "");
+      if (!c) { inp.focus(); return; }
+      if (!/^de/.test(c)) { inp.style.borderColor = "#e2725b"; inp.focus(); return; }
+      location.href = "net3/phone.html?room=" + encodeURIComponent(c);
     }
-    hint.textContent = '房号要以 de 或 bh 开头';
-    inp.style.borderColor = '#e2725b';
-    inp.focus();
-  }
-
-  document.getElementById('goj').addEventListener('click', go);
-  inp.addEventListener('keydown', function (e) { if (e.key === 'Enter') go(); });
-  inp.addEventListener('input', function () {
-    inp.value = inp.value.toLowerCase().replace(/[^a-z0-9\-]/g, '');
-    inp.style.borderColor = '';
-    hint.textContent = '';
-  });
-})();
+    var host = document.getElementById("m-host");
+    if (host) host.addEventListener("click", function () { location.href = "net3/host-phone.html?p=1"; });
+    if (go) go.addEventListener("click", enter);
+    if (inp) {
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") enter(); });
+      inp.addEventListener("input", function () { inp.style.borderColor = "#35485c"; });
+    }
+  })();
 </script>
 <script>
-/* 自动更新：线上 version.json 一变，旧页面自己跳到新地址。
-   守卫用 URL 里的 v 和线上版本比，避免「页面比 version.json 旧」时无限重载。 */
 (function () {
-  var BUILD = '2026-11-03-12';
+  var BUILD = '2026-11-03-13';
   var u = new URL(location.href);
   var got = u.searchParams.get('v');
   if (got === BUILD) return;
   fetch('version.json?t=' + Date.now(), { cache: 'no-store' })
     .then(function (r) { return r.json(); })
     .then(function (j) {
-      if (!j || !j.v) return;
-      if (got === j.v) return;
+      if (!j || !j.v || got === j.v) return;
       u.searchParams.set('v', j.v);
       location.replace(u.toString());
     })
