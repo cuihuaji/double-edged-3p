@@ -179,6 +179,24 @@
     }
   };
 
+  /* ---- TURN 中继：凭证由同目录 turn.json 提供，填好即生效，不用改代码 ----
+     对称型 NAT（校园网、部分移动网络）没有 TURN 就永远连不上，
+     因为两个对称 NAT 之间打洞成功率为 0。 */
+  fetch("turn.json?t=" + Date.now(), { cache: "no-store" })
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (!j || !j.urls) return;
+      var list = Array.isArray(j.urls) ? j.urls : [j.urls];
+      list.forEach(function (u) {
+        PEER_OPTS.config.iceServers.push({
+          urls: u, username: j.username || "", credential: j.credential || ""
+        });
+      });
+      window.__turnCount = list.length;
+    })
+    .catch(function () {});
+
+
   /* 渲染尺寸：默认原生 550×400 + 画布不乘 dpr（N 社官方 config 就是 550×400，showAll 缩放）。
      ?rs=880 退回旧的 880×640（锁步时代遗留，只做对比用）。 */
   const RS = (function () { try { return new URLSearchParams(location.search).get("rs") || ""; } catch (e) { return ""; } })();
@@ -1251,7 +1269,7 @@
 /* 自动更新：线上 version.json 一变，旧页面自己跳到新地址。
    守卫用 URL 里的 v 和线上版本比，避免「页面比 version.json 旧」时无限重载。 */
 (function () {
-  var BUILD = '2026-11-03-15';
+  var BUILD = '2026-11-03-18';
   var u = new URL(location.href);
   var got = u.searchParams.get('v');
   if (got === BUILD) return;

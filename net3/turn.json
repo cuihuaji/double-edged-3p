@@ -1,0 +1,7 @@
+{
+  "_说明": "把 Cloudflare TURN 或 coturn 的凭证填进来即可生效；urls 可写多个",
+  "_例子": "urls: [\"turn:turn.cloudflare.com:3478?transport=udp\", \"turn:turn.cloudflare.com:3478?transport=tcp\"]",
+  "urls": [],
+  "username": "",
+  "credential": ""
+}
