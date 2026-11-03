@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>BOXHEAD 2PLAY · 开房</title>
+<title>盒子头3 · 双人房（汉化版）· 开房</title>
 <style>
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: #0d0f13; color: #e8eef6; overflow: hidden;
@@ -66,7 +66,8 @@
    信令走 PeerJS 公网云，所以整站是纯静态的。
    =================================================================== */
 
-const SWF = 'boxhead2play_ia.swf';
+/* 晓之车汉化版：菜单/武器名/HUD 都是中文。原版是英文矢量图，改不了文字，只能换包体。 */
+const SWF = 'boxhead2play_cn.swf';
 
 const PEER_OPTS = {
   debug: 0,
@@ -224,7 +225,8 @@ function startVideo(remoteId) {
 /* ---------- 布局自适应 ---------- */
 function fitStage() {
   const wrap = $('wrap');
-  const s = Math.min(1, (innerWidth - 40) / 960, (innerHeight - 100) / 720);
+  /* 顶栏 44 + 底部提示条，留够让位，别让提示压到画面上 */
+  const s = Math.min(1, (innerWidth - 32) / 960, (innerHeight - 124) / 720);
   wrap.style.transform = 'scale(' + s + ')';
 }
 addEventListener('resize', fitStage);
@@ -259,6 +261,7 @@ async function boot() {
     if (!canvas) { setState('找不到画布', 'err'); return; }
 
     try { await p.play(); } catch (e) {}
+    fitStage();
     setState('准备就绪', 'warn');
 
     startPeer();
