@@ -548,7 +548,7 @@
 /* 自动更新：线上 version.json 一变，旧页面自己跳到新地址。
    守卫用 URL 里的 v 和线上版本比，避免「页面比 version.json 旧」时无限重载。 */
 (function () {
-  var BUILD = '2026-11-03-10';
+  var BUILD = '2026-11-03-11';
   var u = new URL(location.href);
   var got = u.searchParams.get('v');
   if (got === BUILD) return;
@@ -561,6 +561,25 @@
       location.replace(u.toString());
     })
     .catch(function () {});
+})();
+</script>
+<script>
+/* 点屏幕任意处解锁声音。
+   原来只挂了 v.onclick，但手柄按钮在更上层，点画面根本收不到事件，
+   所以在手机上永远是「静音 是」。改成 document 捕获阶段监听。 */
+(function () {
+  var done = false;
+  function unlock() {
+    if (done) return;
+    var v = document.getElementById("rv");
+    if (!v) return;
+    try { v.muted = false; v.removeAttribute("muted"); } catch (e) {}
+    try { var p = v.play(); if (p && p.catch) p.catch(function () {}); } catch (e2) {}
+    if (!v.muted) done = true;
+  }
+  document.addEventListener("pointerdown", unlock, true);
+  document.addEventListener("touchstart", unlock, true);
+  document.addEventListener("click", unlock, true);
 })();
 </script>
 </body>
