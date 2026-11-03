@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>BOXHEAD 2PLAY · 加入</title>
+<style>
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #0d0f13; color: #e8eef6; overflow: hidden;
+    font: 13px/1.5 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+
+  #stage { position: fixed; inset: 0; display: grid; place-items: center; }
+  #rv { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+  #stage.hide { display: none; }
+
+  #bar { position: fixed; top: 0; left: 0; right: 0; height: 38px; z-index: 20;
+    display: flex; align-items: center; gap: 12px; padding: 0 12px; font-size: 12px;
+    background: rgba(10,14,19,.82); border-bottom: 1px solid #1e2b38; transition: opacity .25s; }
+  #bar.idle { opacity: 0; pointer-events: none; }
+  #st { padding: 3px 9px; border-radius: 9px; background: #223040; font-size: 11px; color: #8fa3b8; }
+  #st.on { background: #1f7a4c; color: #d7ffe8; }
+  #st.warn { background: #7a5a1f; color: #ffe9c2; }
+  #st.err { background: #7a2a2a; color: #ffd7d7; }
+  #lat { color: #7b8fa3; font-family: Consolas, monospace; }
+  #bar .sp { margin-left: auto; }
+  #bar button { padding: 4px 11px; border-radius: 6px; border: 1px solid #33475c;
+    background: #16202b; color: #cfe0f0; font-size: 12px; cursor: pointer; }
+  #bar button:hover { background: #1d2a38; }
+
+  #join { position: fixed; inset: 0; display: grid; place-items: center; z-index: 40;
+    background: radial-gradient(circle at 50% 40%, #1a222c, #070a0d 70%); }
+  #join.gone { display: none; }
+  #join .box { width: 300px; text-align: center; }
+  #join h1 { margin: 0 0 4px; font-size: 18px; color: #ffd166; letter-spacing: 1px; }
+  #join .sub { margin: 0 0 20px; font-size: 12px; color: #7b8fa3; }
+  #code { width: 100%; padding: 12px 0; text-align: center; font: 700 22px/1 Consolas, monospace;
+    letter-spacing: 4px; border-radius: 9px; border: 1px solid #33475c;
+    background: #121a24; color: #ffd166; outline: none; text-transform: lowercase; }
+  #code:focus { border-color: #6fd3ff; }
+  #go { margin-top: 12px; width: 100%; padding: 12px; border-radius: 9px; border: 0;
+    background: linear-gradient(180deg,#2f7dd1,#215f9f); color: #fff; font: 700 14px/1 inherit; cursor: pointer; }
+  #go:disabled { background: #2a3440; color: #6b8299; cursor: default; }
+  #msg { margin-top: 12px; min-height: 18px; font-size: 12px; color: #e2a08b; }
+  #back { display: inline-block; margin-top: 16px; font-size: 12px; color: #6b8299; text-decoration: none; }
+  #back:hover { color: #ffd166; }
+
+  #tap { position: fixed; inset: 0; z-index: 30; display: none; place-items: center;
+    background: rgba(6,9,12,.75); cursor: pointer; }
+  #tap.on { display: grid; }
+  #tap div { text-align: center; color: #ffd166; font-size: 15px; }
+</style>
+</head>
+<body>
+
+<div id="stage" class="hide"><video id="rv" autoplay playsinline muted></video></div>
+
+<div id="bar" class="idle">
+  <span id="st">未连接</span>
+  <span id="lat"></span>
+  <span class="sp"></span>
+  <button id="fs">全屏</button>
+  <button id="quit">退出</button>
+</div>
+
+<div id="join">
+  <div class="box">
+    <h1>BOXHEAD 2PLAY</h1>
+    <p class="sub">输入房主给你的房号</p>
+    <input id="code" maxlength="10" placeholder="bhxxxxxx" autocomplete="off" spellcheck="false">
+    <button id="go">加入</button>
+    <div id="msg"></div>
+    <a href="../index.html" id="back">← 返回大厅</a>
+  </div>
+</div>
+
+<div id="tap"><div>点击画面继续<br><span style="font-size:12px;color:#7b8fa3">浏览器需要一次点击才允许播放</span></div></div>
+
+<script src="peerjs.min.js"></script>
+<script>
+/* ===================================================================
+   BOXHEAD 2PLAY · 远程同乐 · 好友
+   收房主的视频流显示；本地按键回传，房主注入到 Ruffle。
+   好友控制 P2（原版默认：WASD + 空格 + E/Q），方向键映射到 WASD。
+   =================================================================== */
+
+const PEER_OPTS = {
+  debug: 0,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+    ],
+  },
+};
+
+const MAP = {
+  ArrowUp: 'KeyW', ArrowDown: 'KeyS', ArrowLeft: 'KeyA', ArrowRight: 'KeyD',
+  KeyW: 'KeyW', KeyS: 'KeyS', KeyA: 'KeyA', KeyD: 'KeyD',
+  Space: 'Space', KeyE: 'KeyE', KeyQ: 'KeyQ', KeyJ: 'Space',
+};
+
+const $ = (id) => document.getElementById(id);
+const rv = $('rv'), stEl = $('st'), msgEl = $('msg'), latEl = $('lat');
+const joinEl = $('join'), stageEl = $('stage'), barEl = $('bar'), tapEl = $('tap');
+const codeEl = $('code'), goEl = $('go');
+
+let peer = null, conn = null, call = null, room = '';
+let connected = false;
+const pressed = new Set();
+
+function setState(t, cls) { stEl.textContent = t; stEl.className = cls || ''; }
+function msg(t) { msgEl.textContent = t || ''; }
+
+/* ---------- 连接 ---------- */
+function connect() {
+  room = (codeEl.value || '').trim().toLowerCase();
+  if (!room) { msg('先填房号'); return; }
+
+  goEl.disabled = true;
+  msg('正在连接…');
+  setState('连接信令…', 'warn');
+
+  if (peer) { try { peer.destroy(); } catch (e) {} }
+
+  /* 好友用匿名 id，房主那边按房号找人 */
+  peer = new Peer(null, PEER_OPTS);
+
+  peer.on('open', () => {
+    msg('已找到信令，连接房主…');
+    conn = peer.connect(room, { reliable: true });
+
+    conn.on('open', () => {
+      connected = true;
+      setState('已连接', 'on');
+      barEl.classList.remove('idle');
+      msg('');
+      startPing();
+    });
+
+    conn.on('data', (d) => {
+      if (d && typeof d === 'object' && d.t === 'pong') onPong(d);
+    });
+
+    conn.on('close', () => { connected = false; setState('连接断开', 'warn'); });
+    conn.on('error', (e) => console.warn('[guest] data error', e));
+  });
+
+  /* 房主把画面 call 过来，这里应答并挂到 video 上 */
+  peer.on('call', (c) => {
+    call = c;
+    c.answer();
+    c.on('stream', (s) => {
+      rv.srcObject = s;
+      stageEl.classList.remove('hide');
+      joinEl.classList.add('gone');
+      rv.play().catch(() => tapEl.classList.add('on'));
+    });
+  });
+
+  peer.on('error', (e) => {
+    const t = (e && e.type) || String(e);
+    console.warn('[guest] peer error', e);
+    if (t === 'peer-unavailable') {
+      msg('找不到这个房间，确认房主还开着页面');
+      setState('房间不存在', 'err');
+    } else if (t === 'network' || t === 'server-error') {
+      msg('连不上信令服务器（0.peerjs.com）');
+      setState('信令不可用', 'err');
+    } else {
+      msg('出错了：' + t);
+      setState('错误', 'err');
+    }
+    goEl.disabled = false;
+  });
+
+  peer.on('disconnected', () => {
+    setState('信令断开', 'warn');
+    try { peer.reconnect(); } catch (e) {}
+  });
+}
+
+/* ---------- 输入回传 ---------- */
+function sendKey(code, down) {
+  if (!conn || !conn.open) return;
+  const mapped = MAP[code];
+  if (!mapped) return;
+  if (down) pressed.add(mapped); else pressed.delete(mapped);
+  try { conn.send({ t: 'k', code: mapped, down }); } catch (e) {}
+}
+
+addEventListener('keydown', (e) => {
+  if (!connected) return;
+  if (MAP[e.code]) { e.preventDefault(); sendKey(e.code, true); }
+}, { passive: false });
+
+addEventListener('keyup', (e) => {
+  if (!connected) return;
+  if (MAP[e.code]) { e.preventDefault(); sendKey(e.code, false); }
+}, { passive: false });
+
+/* 切走时把按下的键松开，避免房主那边卡键 */
+addEventListener('blur', () => {
+  if (!connected) return;
+  for (const c of [...pressed]) sendKey(c, false);
+});
+
+/* ---------- 延迟 ---------- */
+function startPing() {
+  setInterval(() => {
+    if (!conn || !conn.open) { latEl.textContent = ''; return; }
+    try { conn.send({ t: 'ping', at: performance.now() }); } catch (e) {}
+  }, 1500);
+}
+function onPong(m) {
+  if (typeof m.at !== 'number') return;
+  const ms = Math.round(performance.now() - m.at);
+  latEl.textContent = ms + ' ms';
+  latEl.style.color = ms < 60 ? '#7fd48a' : ms < 120 ? '#ffd166' : '#e28a7a';
+}
+
+/* ---------- 交互 ---------- */
+goEl.onclick = connect;
+codeEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') connect(); });
+codeEl.addEventListener('input', () => {
+  codeEl.value = codeEl.value.toLowerCase().replace(/[^a-z0-9\-]/g, '').slice(0, 10);
+});
+tapEl.onclick = () => { tapEl.classList.remove('on'); rv.play().catch(() => {}); };
+
+$('fs').onclick = () => {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+};
+$('quit').onclick = () => location.reload();
+
+let idleTimer = null;
+function bumpIdle() {
+  barEl.classList.remove('idle');
+  clearTimeout(idleTimer);
+  idleTimer = setTimeout(() => { if (connected) barEl.classList.add('idle'); }, 3000);
+}
+addEventListener('mousemove', bumpIdle);
+addEventListener('touchstart', bumpIdle, { passive: true });
+bumpIdle();
+
+/* 从大厅带房号进来就直接连 */
+const q = new URLSearchParams(location.search).get('room');
+if (q) {
+  codeEl.value = q.toLowerCase().slice(0, 10);
+  setTimeout(() => { if (!connected) connect(); }, 200);
+}
+
+addEventListener('beforeunload', () => { try { if (peer) peer.destroy(); } catch (e) {} });
+</script>
+</body>
+</html>

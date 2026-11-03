@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BOXHEAD 2PLAY · 开房</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0d0f13; color: #e8eef6; overflow: hidden;
+    font: 13px/1.5 "Microsoft YaHei", "PingFang SC", system-ui, sans-serif; }
+
+  #bar { position: fixed; top: 0; left: 0; right: 0; height: 44px; z-index: 20;
+    display: flex; align-items: center; gap: 12px; padding: 0 14px;
+    background: rgba(10,14,19,.92); border-bottom: 1px solid #1e2b38; }
+  #bar .k { color: #7b8fa3; font-size: 12px; }
+  #room { font-family: Consolas, monospace; font-size: 16px; font-weight: 700;
+    letter-spacing: 1px; color: #ffd166; }
+  #st { padding: 3px 10px; border-radius: 9px; background: #223040; font-size: 11.5px; color: #8fa3b8; }
+  #st.on { background: #1f7a4c; color: #d7ffe8; }
+  #st.warn { background: #7a5a1f; color: #ffe9c2; }
+  #st.err { background: #7a2a2a; color: #ffd7d7; }
+  #bar .sp { margin-left: auto; }
+  #bar button, #bar a { padding: 5px 12px; border-radius: 7px; border: 1px solid #33475c;
+    background: #16202b; color: #cfe0f0; font-size: 12px; text-decoration: none; cursor: pointer; }
+  #bar button:hover, #bar a:hover { background: #1d2a38; border-color: #3f5b78; }
+
+  body { display: grid; place-items: center; padding: 60px 0 40px; }
+  #wrap { position: relative; transform-origin: center center; }
+  #rc { width: 960px; height: 720px; background: #000; position: relative; overflow: hidden; }
+  #rc ruffle-player { width: 640px !important; height: 480px !important;
+    transform: scale(1.5); transform-origin: 0 0; }
+
+  #hint { position: fixed; bottom: 8px; left: 0; right: 0; text-align: center;
+    font-size: 12px; color: #6b8299; }
+
+  #gate { position: fixed; inset: 0; z-index: 30; display: grid; place-items: center;
+    background: radial-gradient(circle at 50% 45%, #1a222c, #070a0d 70%); cursor: pointer; }
+  #gate.gone { display: none; }
+  #gate .t { text-align: center; }
+  #gate .t b { display: block; font-size: 20px; color: #ffd166; margin-bottom: 8px; letter-spacing: 1px; }
+  #gate .t span { font-size: 12.5px; color: #7b8fa3; }
+</style>
+</head>
+<body>
+
+<div id="bar">
+  <span class="k">房号</span><span id="room">----</span>
+  <span id="st">初始化…</span>
+  <span class="sp"></span>
+  <button id="copy">复制房号</button>
+  <a href="../index.html">返回大厅</a>
+</div>
+
+<div id="wrap"><div id="rc"></div></div>
+<div id="hint">房主：方向键移动 · / 射击 · . , 换枪　｜　好友：WASD 移动 · 空格射击 · E Q 换枪</div>
+
+<div id="gate"><div class="t"><b>点击开始</b><span>浏览器需要一次点击才允许运行与捕捉画面</span></div></div>
+
+<script src="peerjs.min.js"></script>
+<script src="../html5/js/ruffle-nightly/ruffle.js"></script>
+<script>
+/* ===================================================================
+   BOXHEAD 2PLAY · 远程同乐 · 房主
+   原版 SWF 跑在 Ruffle 里，画面 captureStream 推到好友，
+   好友的按键经 DataChannel 回来，用 dispatchEvent 注入 Ruffle。
+   信令走 PeerJS 公网云，所以整站是纯静态的。
+   =================================================================== */
+
+const SWF = 'boxhead2play_ia.swf';
+
+const PEER_OPTS = {
+  debug: 0,
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:global.stun.twilio.com:3478' },
+    ],
+  },
+};
+
+const KEYCODE = {
+  ArrowUp: 38, ArrowDown: 40, ArrowLeft: 37, ArrowRight: 39,
+  KeyW: 87, KeyA: 65, KeyS: 83, KeyD: 68,
+  Space: 32, KeyE: 69, KeyQ: 81,
+};
+
+const $ = (id) => document.getElementById(id);
+const stEl = $('st'), roomEl = $('room'), gateEl = $('gate');
+
+let player = null;
+let canvas = null;
+let stream = null;
+let peer = null;
+let conn = null;
+let call = null;
+let roomId = '';
+let qualityTimer = null;
+
+function setState(text, cls) {
+  stEl.textContent = text;
+  stEl.className = cls || '';
+}
+
+/* ---------- 房号 ---------- */
+function randChars(n) {
+  const A = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let t = '';
+  for (let i = 0; i < n; i++) t += A[(Math.random() * A.length) | 0];
+  return t;
+}
+roomId = 'bh' + randChars(6);
+roomEl.textContent = roomId;
+
+/* ---------- 注入按键 ---------- */
+function inject(type, code) {
+  if (!player) return;
+  const kc = KEYCODE[code];
+  if (kc === undefined) return;
+
+  /* Ruffle 只在元素有焦点时处理键盘，不聚焦的话事件会被静默丢掉 */
+  if (document.activeElement !== player) player.focus({ preventScroll: true });
+
+  player.dispatchEvent(new KeyboardEvent(type, {
+    code, key: code, keyCode: kc, which: kc,
+    bubbles: true, cancelable: true, composed: true,
+  }));
+}
+
+/* ---------- 画面质量 ----------
+   WebRTC 带宽估紧时会自己降分辨率，好友看到的是一张缩小再放大的糊图。
+   必须钉死 scaleResolutionDownBy=1。而且 setParameters 在协商完成前调用
+   会被静默丢弃（encodings 还空着），所以协商后要反复重申。 */
+function applyQuality() {
+  if (!call) return;
+  try {
+    const pc = call.peerConnection;
+    if (!pc) return;
+    const sender = pc.getSenders().find((s) => s.track && s.track.kind === 'video');
+    if (!sender) return;
+    const params = sender.getParameters();
+    if (!params.encodings || !params.encodings.length) params.encodings = [{}];
+    params.encodings[0].maxBitrate = 8_000_000;
+    params.encodings[0].maxFramerate = 30;
+    params.encodings[0].scaleResolutionDownBy = 1;
+    params.degradationPreference = 'maintain-resolution';
+    sender.setParameters(params).catch(() => {});
+  } catch (e) { /* 协商未完成时静默跳过 */ }
+}
+
+/* ---------- PeerJS ---------- */
+function startPeer() {
+  setState('连接信令…', 'warn');
+  peer = new Peer(roomId, PEER_OPTS);
+
+  peer.on('open', () => {
+    setState('等好友加入', 'warn');
+    console.log('[host] peer open', roomId);
+  });
+
+  peer.on('connection', (c) => {
+    conn = c;
+    bindData(c);
+  });
+
+  peer.on('error', (e) => {
+    const t = (e && e.type) || String(e);
+    console.warn('[host] peer error', e);
+    if (t === 'unavailable-id') {
+      setState('房号被占用，刷新重开', 'err');
+    } else {
+      setState('信令错误：' + t, 'err');
+    }
+  });
+
+  peer.on('disconnected', () => {
+    setState('信令断开，重连中…', 'warn');
+    try { peer.reconnect(); } catch (e) {}
+  });
+}
+
+function bindData(c) {
+  c.on('open', () => {
+    setState('好友已连接', 'on');
+    startVideo(c.peer);
+  });
+
+  c.on('data', (d) => {
+    if (!d || typeof d !== 'object') return;
+    if (d.t === 'k') {
+      inject(d.down ? 'keydown' : 'keyup', d.code);
+    } else if (d.t === 'ping') {
+      try { c.send({ t: 'pong', at: d.at }); } catch (e) {}
+    }
+  });
+
+  c.on('close', () => {
+    setState('好友断开 · 等重连', 'warn');
+    if (qualityTimer) { clearInterval(qualityTimer); qualityTimer = null; }
+  });
+
+  c.on('error', (e) => console.warn('[host] data error', e));
+}
+
+function startVideo(remoteId) {
+  if (!canvas) { setState('画布未就绪', 'err'); return; }
+  try {
+    stream = canvas.captureStream(30);
+  } catch (e) {
+    setState('浏览器不支持 captureStream', 'err');
+    return;
+  }
+  for (const t of stream.getVideoTracks()) {
+    try { t.contentHint = 'detail'; } catch (e) {}
+  }
+
+  call = peer.call(remoteId, stream);
+
+  [600, 1500, 3000, 6000, 12000].forEach((ms) => setTimeout(applyQuality, ms));
+  if (qualityTimer) clearInterval(qualityTimer);
+  qualityTimer = setInterval(applyQuality, 4000);
+}
+
+/* ---------- 布局自适应 ---------- */
+function fitStage() {
+  const wrap = $('wrap');
+  const s = Math.min(1, (innerWidth - 40) / 960, (innerHeight - 100) / 720);
+  wrap.style.transform = 'scale(' + s + ')';
+}
+addEventListener('resize', fitStage);
+fitStage();
+
+/* ---------- 启动 ---------- */
+async function boot() {
+  gateEl.classList.add('gone');
+  setState('加载原版…', 'warn');
+
+  try {
+    /* Ruffle 的缩放模式是全局配置，必须在 createPlayer 之前设 */
+    window.RufflePlayer.config = Object.assign({}, window.RufflePlayer.config, {
+      letterbox: 'off',
+      quality: 'high',
+    });
+
+    const ruffle = window.RufflePlayer.newest();
+    const p = ruffle.createPlayer();
+    p.style.width = '640px';
+    p.style.height = '480px';
+    p.style.transform = 'scale(1.5)';
+    p.style.transformOrigin = '0 0';
+    $('rc').appendChild(p);
+
+    await p.load(SWF);
+    player = p;
+    p.tabIndex = 0;
+    p.focus();
+
+    canvas = p.shadowRoot && p.shadowRoot.querySelector('canvas');
+    if (!canvas) { setState('找不到画布', 'err'); return; }
+
+    try { await p.play(); } catch (e) {}
+    setState('准备就绪', 'warn');
+
+    startPeer();
+  } catch (e) {
+    console.error(e);
+    setState('加载失败：' + (e && e.message), 'err');
+  }
+}
+
+gateEl.addEventListener('click', boot, { once: true });
+
+/* 点画面 / 按任意键都保持 Ruffle 焦点，否则房主自己也按不动 */
+$('wrap').addEventListener('pointerdown', () => { if (player) player.focus({ preventScroll: true }); });
+addEventListener('keydown', (e) => {
+  if (player && document.activeElement !== player && !e.ctrlKey && !e.metaKey) {
+    player.focus({ preventScroll: true });
+  }
+}, true);
+
+/* 复制房号 */
+$('copy').addEventListener('click', async () => {
+  const url = location.origin + location.pathname.replace(/host\.html$/, 'join.html') + '?room=' + roomId;
+  try {
+    await navigator.clipboard.writeText(roomId);
+    $('copy').textContent = '已复制';
+  } catch (e) {
+    $('copy').textContent = '手动复制';
+  }
+  setTimeout(() => { $('copy').textContent = '复制房号'; }, 1500);
+});
+
+addEventListener('beforeunload', () => {
+  try { if (peer) peer.destroy(); } catch (e) {}
+});
+</script>
+</body>
+</html>
