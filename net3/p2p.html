@@ -49,7 +49,11 @@
     </div>
     <input class="code-in" id="code" placeholder="4 位码" maxlength="4" autocomplete="off"
            autocapitalize="off" spellcheck="false" />
+    <input class="code-in" id="myip" placeholder="你的局域网 IP（可留空）" maxlength="15"
+           autocomplete="off" style="font-size:15px;letter-spacing:1px;width:210px" />
     <div style="color:#61707f;font-size:11.5px;line-height:1.6">
+      如果两台设备连的是同一个 WiFi：手机「设置 → WLAN → 已连接的网络」能看到 IP（10.160.x.x），
+      电脑 ipconfig 里的 IPv4。填上就能走局域网直连，延迟只有几毫秒。
       发起方点完会生成一个 4 位码，念给接收方；接收方把码填进上面的框，再点「我是接收方」。
     </div>
   </div>
@@ -77,6 +81,25 @@
   var code = '';
   var role = '';           // 'A' | 'B'
   var pc = null, dc = null, es = null;
+
+  function myIP() {
+    var el = document.getElementById('myip');
+    var v = el ? String(el.value || '').trim() : '';
+    return /^\d{1,3}(\.\d{1,3}){3}$/.test(v) ? v : '';
+  }
+
+  /* 浏览器把局域网候选写成 xxxx.local（mDNS），校园网封多播就解析不了。
+     对方把自己的真 IP 一起发过来，这里直接把假名字换成它，端口不动。 */
+  function fixSdp(sdp, peerIp) {
+    if (!sdp || !peerIp) return sdp;
+    var n = 0;
+    var out = sdp
+      .replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.local/g, function () { n++; return peerIp; })
+      .replace(/[0-9a-zA-Z-]{1,63}\.local(?= \d+ typ)/g, function () { n++; return peerIp; });
+    window.__fixN = (window.__fixN || 0) + n;
+    return out;
+  }
+
 
   /* 分两段计时，别在对方还在输码的时候就判死：
      ① 等对方接入：只提示，不判失败（120 秒后给指引）
@@ -120,6 +143,7 @@
   var setTheirs = row('theirs', '对方候选');
   var setPeerMsg = row('peer', '对端消息');
   var setErr = row('err', '候选错误');
+  var setLan = row('lan', '局域网改写');
   var setIce = row('ice', 'ICE 状态');
   var setPair = row('pair', '选中的候选对');
   var setDc = row('dc', '数据通道');
@@ -255,6 +279,7 @@
     if (m.t === 'offer' && role === 'B') {
       if (window.__answered) { setPeerMsg('收到 offer（已回过，忽略）', 'mid-v'); return; }
       setPeerMsg('收到 offer ✓', 'ok-v');
+      setTimeout(function () { setLan('对方 IP ' + (m.ip || '未提供') + ' · 已改写 ' + (window.__fixN || 0) + ' 个候选', m.ip ? 'ok-v' : 'mid-v'); }, 80);
       window.__answered = true;
       armConnectTimer();
       var c1 = countCands(m.sdp);
@@ -262,22 +287,23 @@
         setTheirs('收到 offer：host ' + c1.host + '(' + c1.mdns + ' 个是 .local) · srflx ' + c1.srflx +
           ' · relay ' + c1.relay, 'mid-v');
       }
-      pc.setRemoteDescription({ type: 'offer', sdp: m.sdp })
+      pc.setRemoteDescription({ type: 'offer', sdp: fixSdp(m.sdp, m.ip) })
         .then(function () { return pc.createAnswer(); })
         .then(function (a) { return pc.setLocalDescription(a); })
         .then(function () { return waitGather(pc); })
-        .then(function () { return pub({ t: 'answer', from: 'B', to: 'A', sdp: pc.localDescription.sdp }); })
+        .then(function () { return pub({ t: 'answer', from: 'B', to: 'A', sdp: pc.localDescription.sdp, ip: myIP() }); })
         .then(function () { verdict('已回发 answer，正在等直连…', 'wait'); })
         .catch(function (e) { verdict('回发失败: ' + String(e).slice(0, 50), 'bad'); });
     }
     if (m.t === 'answer' && role === 'A') {
       setPeerMsg('收到 answer ✓', 'ok-v');
+      setTimeout(function () { setLan('对方 IP ' + (m.ip || '未提供') + ' · 已改写 ' + (window.__fixN || 0) + ' 个候选', m.ip ? 'ok-v' : 'mid-v'); }, 80);
       window.__gotAnswer = true;
       armConnectTimer();
       var c2 = countCands(m.sdp);
       setTheirs('收到 answer：host ' + c2.host + ' · srflx ' + c2.srflx + ' · relay ' + c2.relay +
         (c2.mdns ? '（' + c2.mdns + ' 个 .local）' : ''), c2.srflx || c2.relay ? 'mid-v' : 'bad-v');
-      pc.setRemoteDescription({ type: 'answer', sdp: m.sdp })
+      pc.setRemoteDescription({ type: 'answer', sdp: fixSdp(m.sdp, m.ip) })
         .then(function () { verdict('已收到 answer，正在打洞…', 'wait'); })
         .catch(function (e) { verdict('设置 answer 失败: ' + String(e).slice(0, 50), 'bad'); });
     }
@@ -317,7 +343,7 @@
             function sendOnce() {
               if (sent >= 6 || window.__gotAnswer) return;
               sent++;
-              pub({ t: 'offer', from: 'A', to: 'B', sdp: pc.localDescription.sdp });
+              pub({ t: 'offer', from: 'A', to: 'B', sdp: pc.localDescription.sdp, ip: myIP() });
               setSig('offer 已发出 ' + sent + ' 次 ✓', 'ok-v');
               verdict('offer 已发出（第 ' + sent + ' 次），等对方回 answer…', 'wait');
               setTimeout(sendOnce, 3000);
